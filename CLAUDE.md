@@ -114,14 +114,16 @@ CREATE TABLE creators (
   -- Plattformen
   platforms         TEXT[] DEFAULT '{}',
   -- Telegram (nullable für Phase 2 Web-only)
-  telegram_chat_id  BIGINT UNIQUE,
-  -- Intern
-  notes             TEXT,                -- Nur Agentur/Admin sichtbar
+  telegram_chat_id  BIGINT,             -- KEIN globales UNIQUE — partieller Index unten
+  -- Intern (DSGVO: darf Creator-Rolle NICHT zurückgegeben werden)
+  notes             TEXT,
   -- Status
   active            BOOLEAN DEFAULT true,
   deleted_at        TIMESTAMPTZ,
   created_at        TIMESTAMPTZ DEFAULT now()
 );
+-- Partieller Unique-Index: erlaubt neue Einträge nach Soft Delete
+CREATE UNIQUE INDEX idx_creators_telegram_unique ON creators(telegram_chat_id) WHERE deleted_at IS NULL AND telegram_chat_id IS NOT NULL;
 ```
 
 ### Tabelle: `jobs`
@@ -179,9 +181,9 @@ CREATE TABLE deliveries (
 ```sql
 CREATE TABLE users (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  agency_id       UUID REFERENCES agencies(id),   -- gesetzt wenn role = 'agency'
+  agency_id       UUID REFERENCES agencies(id),   -- gesetzt wenn role = 'agency' oder 'creator'
   creator_id      UUID REFERENCES creators(id),   -- gesetzt wenn role = 'creator'
-  email           TEXT UNIQUE NOT NULL,            -- Login-E-Mail
+  email           TEXT NOT NULL,                   -- Login-E-Mail, KEIN globales UNIQUE — partieller Index
   password_hash   TEXT NOT NULL,
   role            TEXT DEFAULT 'creator' CHECK (role IN ('creator','agency','admin')),
   last_login      TIMESTAMPTZ,
@@ -190,6 +192,8 @@ CREATE TABLE users (
   deleted_at      TIMESTAMPTZ,
   created_at      TIMESTAMPTZ DEFAULT now()
 );
+-- Partieller Unique-Index: E-Mail eindeutig nur unter aktiven Usern
+CREATE UNIQUE INDEX idx_users_email_unique ON users(email) WHERE deleted_at IS NULL;
 ```
 
 ### Tabelle: `refresh_tokens`
@@ -203,23 +207,25 @@ CREATE TABLE refresh_tokens (
   revoked     BOOLEAN DEFAULT false,
   created_at  TIMESTAMPTZ DEFAULT now()
 );
+CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id) WHERE revoked = false;
 ```
 
 ### Tabelle: `content_plans` *(Neu — Mein Content für Creator)*
 
 ```sql
 CREATE TABLE content_plans (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  creator_id    UUID REFERENCES creators(id),
-  agency_id     UUID REFERENCES agencies(id),
-  week_number   INT NOT NULL,
-  year          INT NOT NULL,
-  platform      TEXT NOT NULL CHECK (platform IN ('IG','TK','OF','FL','ML','OTHER')),
-  title         TEXT,
-  description   TEXT,
-  status        TEXT DEFAULT 'idea' CHECK (status IN ('idea','planned','filming','done')),
-  deleted_at    TIMESTAMPTZ,
-  created_at    TIMESTAMPTZ DEFAULT now()
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id         UUID REFERENCES creators(id),
+  agency_id          UUID REFERENCES agencies(id),
+  week_number        INT NOT NULL,
+  year               INT NOT NULL,
+  platform           TEXT NOT NULL CHECK (platform IN ('IG','TK','OF','FL','ML','OTHER')),
+  title              TEXT,
+  description        TEXT,
+  status             TEXT DEFAULT 'idea' CHECK (status IN ('idea','planned','filming','done')),
+  visible_to_agency  BOOLEAN DEFAULT false,  -- Creator gibt Plan für Agentur-Kreativ-Tab frei
+  deleted_at         TIMESTAMPTZ,
+  created_at         TIMESTAMPTZ DEFAULT now()
 );
 ```
 
@@ -266,9 +272,12 @@ CREATE TABLE logs (
 |---|---|---|---|
 | GET | `/` | admin (alle), agency (eigene) | Creator-Liste |
 | POST | `/` | admin, agency | Neuen Creator + User anlegen (Transaktion) |
-| GET | `/:id` | admin, agency (eigene) | Creator-Detail |
+| GET | `/me` | creator | Eigenes Profil (gefiltert: keine notes/interne Felder) |
+| GET | `/:id` | admin, agency (eigene) | Creator-Detail inkl. notes |
 | PATCH | `/:id` | admin, agency (eigene) | Creator bearbeiten |
 | DELETE | `/:id` | admin | Soft delete |
+
+**DSGVO-Pflicht:** `GET /me` und alle Creator-Responses an role=creator dürfen NICHT enthalten: `notes`, `real_name` (nur artist_name zurückgeben), `birthday`, `phone`, `contact_email`. Diese Felder sind interne Agentur-Daten.
 
 ### Jobs (`/api/v1/jobs`)
 
@@ -278,7 +287,7 @@ CREATE TABLE logs (
 | POST | `/` | admin, agency | Neuen Job anlegen |
 | PATCH | `/:id/status` | admin, agency, bot | Status ändern |
 | DELETE | `/:id` | admin | Soft delete |
-| GET | `/summary` | admin, agency | Statistik-Zusammenfassung |
+| GET | `/summary` | admin, agency, creator | Statistik-Zusammenfassung (creator: nur eigene) |
 
 ### Content Plans (`/api/v1/content-plans`)
 
@@ -404,12 +413,40 @@ Wenn Agentur anlegt: `agency_id` automatisch aus JWT, kein Dropdown.
 
 - JWT Access Token: 24h Laufzeit
 - Refresh Token: 30 Tage, SHA-256 gehasht in DB
-- Passwort-Hashing: bcrypt mit 14 Runden
+- Passwort-Hashing: bcrypt mit **12 Runden** (14 zu langsam für Render Free Tier — ~3–5s, Timeout-Risiko)
 - Account-Sperre: nach 10 Fehlversuchen, 30 Minuten
 - Rate Limiting: 100 req/min allgemein, 10/15min für Login
 - Helmet.js: Security-Headers inkl. HSTS
 - CORS: nur `ALLOWED_ORIGIN` aus ENV
 - Alle Admin-Änderungen an fremden Daten: werden in `logs` protokolliert
+- Erster Admin-User: via `POST /api/v1/auth/setup` mit `X-Setup-Key` Header (ENV: `SETUP_KEY`). Nach erstem Admin-Anlegen: `SETUP_KEY` aus ENV entfernen.
+- Passwort-Reset Phase 1: Admin setzt Passwort via `PATCH /api/v1/users/:id` (admin-only) manuell zurück. Selbstständiger Reset-Flow kommt in Phase 2.
+
+## Rollenbasiertes Routing (Dashboard)
+
+- Nach Login: Redirect basierend auf `role` aus API-Response
+  - `admin` → `/admin`
+  - `agency` → `/agentur`
+  - `creator` → `/creator`
+- Geschützte Routen: falsche Rolle → Redirect auf `/login`
+- JWT wird in `localStorage` gespeichert, bei 401-Response automatisch refresh versuchen
+
+## Telegram Creator-Verknüpfung (Phase 1: manuell)
+
+Creator wird im Dashboard angelegt (ohne Telegram-ID).  
+Verknüpfung Phase 1: Admin setzt `telegram_chat_id` manuell via `PATCH /api/v1/creators/:id`.  
+Phase 2: Creator schreibt `/start` im Bot → Bot liest `telegram_chat_id` → verknüpft via Einmal-Code oder E-Mail-Abgleich (noch zu definieren).
+
+## postgres.js Transaktions-Syntax
+
+```js
+// Korrekte Syntax für atomare Operationen:
+await sql.begin(async sql => {
+  const [creator] = await sql`INSERT INTO creators (...) VALUES (...) RETURNING id`
+  await sql`INSERT INTO users (..., creator_id) VALUES (..., ${creator.id})`
+  // Bei Exception: automatischer Rollback
+})
+```
 
 ---
 
@@ -447,5 +484,5 @@ Wenn Agentur anlegt: `agency_id` automatisch aus JWT, kein Dropdown.
 
 ---
 
-*Zuletzt aktualisiert: 2026-04-29*  
+*Zuletzt aktualisiert: 2026-04-29 — nach kritischer Review aller Schichten*  
 *Alle Änderungen müssen hier dokumentiert werden.*
