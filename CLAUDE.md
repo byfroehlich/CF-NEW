@@ -380,6 +380,129 @@ Wenn Agentur anlegt: `agency_id` automatisch aus JWT, kein Dropdown.
 
 ---
 
+## Design-System
+
+### Grundprinzip
+Jede Rolle hat ein **visuell eigenständiges Design**. Creator-UI ist warm und konsumgerecht, Admin-UI ist professionell und informationsdicht. Agentur liegt dazwischen.
+
+---
+
+### Logo / Header-Logo (alle Rollen)
+- Rundes/quadratisches Avatar-Icon: **„CF"** in Weiß auf Indigo/Lila Hintergrund
+- Daneben: **„CreatorFlow"** fettgedruckt
+- Darunter: Rollen-Kontext (siehe je Rolle)
+- Rechts im Header: KW-Navigation `< KW 18 / 2026 >` mit Pfeil-Buttons + „Abmelden"-Link
+
+---
+
+### Creator-Dashboard
+
+**Header:**
+- Hintergrund: **Gradient von Lila/Violett (links) nach Pink/Magenta (rechts)**
+- Logo-Subtitle: Nur die KW, z.B. `KW18`
+- Farbe Header-Text: Weiß
+
+**Tabs** (als Pill-Buttons direkt unter dem Header-Bereich, nicht als Leiste):
+- `Aufträge` | `Mein Content`
+- Aktiver Tab: weiß ausgefüllt, runde Pill-Form
+- Inaktiver Tab: transparent mit weißer Schrift
+
+**Statistik-Karten** (3 Stück):
+- `Gesamt` — Zahl in Grau
+- `Offen` — Zahl in **Rot/Coral**
+- `Erledigt` — Zahl in **Grün**
+- Karten: weiß, abgerundete Ecken, kein farbiger Balken oben
+
+**Plattform-Filter:**
+- Pills: `Alle | IG | TK | OF | FL | ML`
+- Aktiv: dunkel ausgefüllt (Indigo/Dunkelgrau)
+- Inaktiv: weißer Hintergrund, grauer Rand
+
+**Leer-Zustand:** Rosa Blumen-Emoji + grauer Text „Keine Jobs für KW18"
+
+**Mein Content Tab:**
+- Plattform-Filter (Alle / IG / OF …)
+- Zweiter Filter: `Alle | 👤 Solo | 👥 Partner`
+- Warn-Banner (gelb/amber): „Kein Creator in der Datenbank — zuerst im Admin-Tab einen Creator anlegen."
+- Neuer Plan: gestrichelter Rahmen-Button `+ Neuer Content-Plan` in Lila
+- Leer-Zustand: 🎬 Emoji + grauer Text
+
+**Hintergrund:** Sehr helles Grau / fast Weiß (`gray-50`)
+
+---
+
+### Admin-Dashboard
+
+**Header:**
+- Hintergrund: **Dunkles Navy/Charcoal** (`gray-900` / `#111827`)
+- Logo-Subtitle: `ADMIN · Agentur-Übersicht` in gedämpftem Grau
+- Farbe Header-Text: Weiß
+- „ABMELDEN" als Text-Link rechts oben (Caps, klein)
+
+**Tabs** (horizontale Tab-Leiste, direkt auf weißem/grauem Hintergrund unter Header):
+- `Aufträge | Creator | ▶ Kreativ | Statistik | Nutzer | ⚙ System`
+- Aktiver Tab: fett, Unterstrich oder dunkle Füllung
+- System-Tab hat Zahnrad-Icon `⚙`
+- Kreativ-Tab hat Play-Icon `▶`
+
+**Statistik-Karten** (5 Stück, breiter):
+- `GESAMT | OFFEN | IN ARBEIT | GELIEFERT | ÜBERTRÄGE`
+- Label in Caps, klein, gedämpft
+- Dünne farbige Linie **oben** auf der Karte (kein großes Zahl-Farb-Highlight)
+- Farben der Linien: Grau / Rot / Orange / Grün / Gelb
+
+**Plattform-Filter:** Identisch zu Creator, aber `Alle` = schwarze Pill
+
+**Leer-Zustand:** Nur Text „Keine Jobs für diese Auswahl." zentriert, grau
+
+**System-Tab:**
+- Abschnitt „SYSTEM-STATUS" (Caps-Label)
+- Status-Karten (4 Stück nebeneinander): `BOT | FEHLER (1H) | LETZTER JOB | LETZTE LIEFERUNG`
+  - Farbiger Punkt rechts oben: Rot = Problem, Grün = OK
+- Zusammenfassungs-Karten (3 Stück): `Info (24h)` grün getönt | `Warnungen (24h)` gelb getönt | `Fehler (24h)` rot getönt
+- Log-Filter: `Alle Level | Info | Warn | Error` + `Alle Quellen | Bot | Api | Cron`
+- Footer: „Automatische Aktualisierung alle 30 Sekunden" grau, zentriert
+
+**Hintergrund:** Helles Grau (`gray-50`)
+
+---
+
+### Agentur-Dashboard
+
+Noch nicht in Screenshots zu sehen — Design analog zu Admin (dunkler Header), aber:
+- Header-Subtitle: `AGENTUR · [Agenturname]`
+- Tabs: `Aufträge | Creator | Kreativ | Statistik` (kein Nutzer, kein System)
+- Statistik-Karten: wie Admin (5 Stück mit farbigen Linien)
+
+---
+
+### Bottom Navigation Bar (Dev/Test-Hilfe)
+Persistente Leiste am unteren Rand — dient zum schnellen Rollen-Wechsel während Entwicklung:
+- Buttons: `Admin | Agentur | Creator | 🔓 Einloggen`
+- Aktive Rolle: lila/indigo Pill-Button (ausgefüllt)
+- Inaktive Rollen: graue Text-Buttons
+- **In Production:** diese Leiste entfernen oder nur für Admin sichtbar lassen
+
+---
+
+### Farb-Tokens (Tailwind)
+
+| Zweck | Klasse |
+|---|---|
+| Creator-Header Gradient | `bg-gradient-to-r from-violet-600 to-pink-500` |
+| Admin-Header | `bg-gray-900` |
+| Aktiver Tab / Button | `bg-indigo-600 text-white` |
+| Offen / Rot | `text-red-500` |
+| Erledigt / Grün | `text-green-500` |
+| In Arbeit / Orange | `text-orange-500` |
+| Überträge / Gelb | `text-yellow-500` |
+| Hintergrund | `bg-gray-50` |
+| Karte | `bg-white rounded-xl border border-gray-200` |
+| Warn-Banner | `bg-amber-50 border border-amber-200 text-amber-800` |
+| Gestrichelter Button | `border-2 border-dashed border-indigo-300 text-indigo-500` |
+
+---
+
 ## Implementierungsreihenfolge
 
 ### Phase 1 — Grundsystem (aktuell)
