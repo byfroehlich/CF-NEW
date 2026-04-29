@@ -1,0 +1,451 @@
+# CreatorFlow — Projektdokumentation
+
+> **WICHTIG:** Alle Architektur-Entscheidungen, Schema-Änderungen, neue Endpoints, neue Komponenten und Rollenrechte müssen hier dokumentiert werden bevor oder unmittelbar nachdem sie implementiert werden. Dieses Dokument ist die einzige Quelle der Wahrheit.
+
+---
+
+## Was ist CreatorFlow?
+
+SaaS-Auftragsmanagement für Content-Agenturen die mit freiberuflichen Creators arbeiten.  
+Automatisiert den Workflow von Auftragsvergabe bis Lieferung — primär über Telegram, erweiterbar auf Web.
+
+**Zielgruppe Phase 1:** Ein Admin, ein Creator, eine Agentur.  
+**Zielgruppe Phase 2–4:** Mehrere Agenturen, bis 500 Creator, Stripe-Abo-Modell.
+
+---
+
+## Kernprinzipien (nicht verhandelbar)
+
+1. **Telegram bleibt Arbeitskanal** — Bot ist unsichtbarer Layer, kein Workflow-Zwang
+2. **Datenisolation** — jede DB-Query prüft `agency_id` oder `creator_id`, kein Cross-Access
+3. **Soft Delete überall** — nichts wird hart gelöscht, Audit-Trail für Streitigkeiten
+4. **DSGVO-Pflicht** — Neon Frankfurt, Logs nach 90 Tagen, Videos nie selbst speichern
+5. **Phase 2 ohne Umbau** — alle Telegram-IDs nullable, Business-Logik framework-agnostisch
+6. **Admin-Zugriff ist geloggt** — Admin darf alles lesen/bearbeiten, jede Änderung landet im Audit-Log
+
+---
+
+## Architektur
+
+### 3 unabhängige Services (alle auf Render)
+
+| Service | Technologie | Zweck |
+|---|---|---|
+| **Bot** | Node.js ESM + Telegraf | Liest Telegram, erkennt Aufträge & Lieferungen |
+| **API** | Node.js ESM + Express | REST `/api/v1/`, einziger DB-Zugang |
+| **Dashboard** | React + Vite + TailwindCSS | Web-UI für alle Rollen |
+
+### Datenbank
+- **Neon PostgreSQL** — Region `eu-central-1` (Frankfurt), DSGVO-konform
+- **postgres.js** — kein ORM, direktes SQL, volle Kontrolle
+- **Zod** — Validierung auf allen API-Routes, kein unvalidierter Input erreicht die DB
+
+---
+
+## Rollen & Berechtigungen
+
+### Admin
+- Einziger User der zu Beginn manuell angelegt wird
+- Legt Agenturen und Creator an
+- Sieht alle Daten aller Agenturen, filterbar
+- Kann alle Daten bearbeiten (wird geloggt)
+- Tabs: Aufträge / Creator / Agentur / Kreativ / Statistik / Nutzer / System
+
+### Agentur
+- Wird vom Admin angelegt
+- Sieht nur eigene Creator und Aufträge
+- Kann Creator-Profile ihrer Agentur bearbeiten
+- Tabs: Aufträge / Creator / Kreativ / Statistik
+- **Kein Zugriff auf:** Nutzer-Tab, System-Tab
+
+### Creator
+- Wird vom Admin oder der Agentur angelegt
+- Sieht nur eigene Aufträge
+- Kann eigene Inhalte planen (Mein Content)
+- Tabs: Aufträge / Mein Content
+
+---
+
+## Datenbankschema
+
+### Tabelle: `agencies`
+
+```sql
+CREATE TABLE agencies (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name            TEXT NOT NULL,
+  -- Kontakt
+  contact_person  TEXT,
+  email           TEXT UNIQUE,
+  phone           TEXT,
+  website         TEXT,
+  -- Adresse
+  address_street  TEXT,
+  address_city    TEXT,
+  address_zip     TEXT,
+  address_country TEXT DEFAULT 'DE',
+  -- Notizen
+  notes           TEXT,
+  -- Zahlungssystem (Phase 3 — Felder jetzt schon anlegen)
+  stripe_customer_id TEXT,
+  plan            TEXT DEFAULT 'trial' CHECK (plan IN ('trial','starter','pro','enterprise')),
+  plan_expires_at TIMESTAMPTZ,
+  -- Status
+  active          BOOLEAN DEFAULT true,
+  deleted_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Tabelle: `creators`
+
+```sql
+CREATE TABLE creators (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agency_id         UUID REFERENCES agencies(id),
+  -- Namen
+  real_name         TEXT NOT NULL,       -- Bürgerlicher Name (intern/rechtlich)
+  artist_name       TEXT,                -- Künstlername (Anzeigename)
+  -- Profil
+  photo_url         TEXT,
+  contact_email     TEXT,                -- Kontakt-E-Mail (≠ Login-E-Mail)
+  phone             TEXT,
+  birthday          DATE,                -- Altersnachweis für OF/FL/ML
+  -- Plattformen
+  platforms         TEXT[] DEFAULT '{}',
+  -- Telegram (nullable für Phase 2 Web-only)
+  telegram_chat_id  BIGINT UNIQUE,
+  -- Intern
+  notes             TEXT,                -- Nur Agentur/Admin sichtbar
+  -- Status
+  active            BOOLEAN DEFAULT true,
+  deleted_at        TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Tabelle: `jobs`
+
+```sql
+CREATE TABLE jobs (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id        UUID REFERENCES creators(id),
+  agency_id         UUID REFERENCES agencies(id),
+  week_number       INT NOT NULL,
+  year              INT NOT NULL,
+  platform          TEXT NOT NULL CHECK (platform IN ('IG','TK','OF','FL','ML','OTHER')),
+  content_type      TEXT DEFAULT 'clip' CHECK (content_type IN ('clip','reel','script','other')),
+  source_link       TEXT,
+  source_message_id BIGINT,
+  status            TEXT DEFAULT 'open' CHECK (status IN ('open','in_progress','delivered','confirmed','carried')),
+  carried_over_from UUID REFERENCES jobs(id),
+  created_at        TIMESTAMPTZ DEFAULT now(),
+  in_progress_at    TIMESTAMPTZ,
+  delivered_at      TIMESTAMPTZ,
+  confirmed_at      TIMESTAMPTZ,
+  deleted_at        TIMESTAMPTZ
+);
+```
+
+### Tabelle: `job_status_history`
+
+```sql
+CREATE TABLE job_status_history (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id            UUID REFERENCES jobs(id),
+  old_status        TEXT,
+  new_status        TEXT NOT NULL,
+  changed_by        UUID,
+  changed_by_source TEXT DEFAULT 'bot' CHECK (changed_by_source IN ('bot','api','cron')),
+  note              TEXT,
+  created_at        TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Tabelle: `deliveries`
+
+```sql
+CREATE TABLE deliveries (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id              UUID REFERENCES jobs(id),
+  telegram_message_id BIGINT,
+  telegram_file_id    TEXT,
+  received_at         TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Tabelle: `users`
+
+```sql
+CREATE TABLE users (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agency_id       UUID REFERENCES agencies(id),   -- gesetzt wenn role = 'agency'
+  creator_id      UUID REFERENCES creators(id),   -- gesetzt wenn role = 'creator'
+  email           TEXT UNIQUE NOT NULL,            -- Login-E-Mail
+  password_hash   TEXT NOT NULL,
+  role            TEXT DEFAULT 'creator' CHECK (role IN ('creator','agency','admin')),
+  last_login      TIMESTAMPTZ,
+  failed_attempts INT DEFAULT 0,
+  locked_until    TIMESTAMPTZ,
+  deleted_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Tabelle: `refresh_tokens`
+
+```sql
+CREATE TABLE refresh_tokens (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID REFERENCES users(id),
+  token_hash  TEXT UNIQUE NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  revoked     BOOLEAN DEFAULT false,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Tabelle: `content_plans` *(Neu — Mein Content für Creator)*
+
+```sql
+CREATE TABLE content_plans (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id    UUID REFERENCES creators(id),
+  agency_id     UUID REFERENCES agencies(id),
+  week_number   INT NOT NULL,
+  year          INT NOT NULL,
+  platform      TEXT NOT NULL CHECK (platform IN ('IG','TK','OF','FL','ML','OTHER')),
+  title         TEXT,
+  description   TEXT,
+  status        TEXT DEFAULT 'idea' CHECK (status IN ('idea','planned','filming','done')),
+  deleted_at    TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT now()
+);
+```
+
+### Tabelle: `logs`
+
+```sql
+CREATE TABLE logs (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  agency_id  UUID REFERENCES agencies(id),
+  level      TEXT NOT NULL DEFAULT 'info' CHECK (level IN ('info','warn','error')),
+  source     TEXT NOT NULL DEFAULT 'bot' CHECK (source IN ('bot','api','cron')),
+  event      TEXT NOT NULL,
+  message    TEXT NOT NULL,
+  metadata   JSONB,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+---
+
+## API Endpoints
+
+### Auth (`/api/v1/auth`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| POST | `/login` | alle | Login, gibt access_token + refresh_token |
+| POST | `/refresh` | alle | Token erneuern |
+| POST | `/logout` | alle | Refresh Token revoken |
+
+### Agencies (`/api/v1/agencies`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | admin | Alle Agenturen |
+| POST | `/` | admin | Neue Agentur anlegen |
+| GET | `/:id` | admin, agency (eigene) | Agentur-Detail |
+| PATCH | `/:id` | admin, agency (eigene) | Agentur bearbeiten |
+| DELETE | `/:id` | admin | Soft delete |
+
+### Creators (`/api/v1/creators`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | admin (alle), agency (eigene) | Creator-Liste |
+| POST | `/` | admin, agency | Neuen Creator + User anlegen (Transaktion) |
+| GET | `/:id` | admin, agency (eigene) | Creator-Detail |
+| PATCH | `/:id` | admin, agency (eigene) | Creator bearbeiten |
+| DELETE | `/:id` | admin | Soft delete |
+
+### Jobs (`/api/v1/jobs`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | admin (alle), agency (eigene), creator (eigene) | Jobs nach KW/Plattform |
+| POST | `/` | admin, agency | Neuen Job anlegen |
+| PATCH | `/:id/status` | admin, agency, bot | Status ändern |
+| DELETE | `/:id` | admin | Soft delete |
+| GET | `/summary` | admin, agency | Statistik-Zusammenfassung |
+
+### Content Plans (`/api/v1/content-plans`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | creator (eigene), agency (eigene), admin (alle) | Pläne nach KW |
+| POST | `/` | creator, agency, admin | Neuen Plan anlegen |
+| PATCH | `/:id` | creator (eigene), agency, admin | Plan bearbeiten |
+| DELETE | `/:id` | creator (eigene), agency, admin | Soft delete |
+
+### Logs (`/api/v1/logs`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | admin | System-Logs |
+
+---
+
+## Dashboard — Tabs pro Rolle
+
+### Admin-Dashboard
+- **Aufträge** — alle Agenturen, Filter: KW / Plattform / Agentur / Creator
+- **Creator** — Creator-Kartei, Anlegen-Formular, Bearbeiten
+- **Agentur** — Agentur-Verwaltung, Anlegen, Details, zugeordnete Creator
+- **Kreativ** — freigegebene Content-Pläne, Filter wie Aufträge
+- **Statistik** — alle Agenturen, filterbar nach Agentur / Creator / KW
+- **Nutzer** — alle User-Accounts, Rollen, Status
+- **System** — Bot-Status, Logs, Heartbeat
+
+### Agentur-Dashboard
+- **Aufträge** — nur eigene Creator, Filter: KW / Plattform / Creator
+- **Creator** — eigene Creator-Kartei, Anlegen, Bearbeiten
+- **Kreativ** — freigegebene Pläne der eigenen Creator
+- **Statistik** — nur eigene Agentur
+
+### Creator-Dashboard
+- **Aufträge** — nur eigene Jobs, Filter: KW / Plattform
+- **Mein Content** — eigene Content-Pläne anlegen/bearbeiten, Filter: KW / Plattform
+
+---
+
+## Creator anlegen — Formular (Admin & Agentur)
+
+Wenn Admin anlegt: Agentur-Dropdown vorhanden (zukunftssicher).  
+Wenn Agentur anlegt: `agency_id` automatisch aus JWT, kein Dropdown.
+
+**Felder:**
+
+| Feld | Tabelle.Spalte | Pflicht | Hinweis |
+|---|---|---|---|
+| Bürgerlicher Name | `creators.real_name` | ja | intern/rechtlich |
+| Künstlername | `creators.artist_name` | nein | Anzeigename |
+| Foto-URL | `creators.photo_url` | nein | |
+| Kontakt-E-Mail | `creators.contact_email` | nein | ≠ Login-E-Mail |
+| Telefon | `creators.phone` | nein | |
+| Geburtstag | `creators.birthday` | nein | Altersnachweis |
+| Plattformen | `creators.platforms[]` | ja | Multi-Toggle |
+| Interne Notizen | `creators.notes` | nein | nur Agentur/Admin |
+| Agentur | `creators.agency_id` | ja | Dropdown (nur Admin) |
+| Login E-Mail | `users.email` | ja | Login-Account |
+| Passwort | `users.password_hash` | ja | min. 8 Zeichen |
+
+**Backend:** `POST /api/v1/creators` legt in **einer Transaktion** an:
+1. INSERT in `creators`
+2. INSERT in `users` (role: 'creator', creator_id: neue ID, agency_id: übernommen)
+3. Bei Fehler: vollständiger Rollback
+
+---
+
+## Agentur anlegen — Formular (Admin)
+
+| Feld | Tabelle.Spalte | Pflicht |
+|---|---|---|
+| Agenturname | `agencies.name` | ja |
+| Ansprechpartner | `agencies.contact_person` | nein |
+| E-Mail | `agencies.email` | nein |
+| Telefon | `agencies.phone` | nein |
+| Website | `agencies.website` | nein |
+| Straße | `agencies.address_street` | nein |
+| Stadt | `agencies.address_city` | nein |
+| PLZ | `agencies.address_zip` | nein |
+| Land | `agencies.address_country` | nein |
+| Notizen | `agencies.notes` | nein |
+| Login E-Mail | `users.email` | ja |
+| Passwort | `users.password_hash` | ja |
+
+**Backend:** `POST /api/v1/agencies` legt in **einer Transaktion** an:
+1. INSERT in `agencies`
+2. INSERT in `users` (role: 'agency', agency_id: neue ID)
+
+---
+
+## Implementierungsreihenfolge
+
+### Phase 1 — Grundsystem (aktuell)
+- [ ] DB-Schema Migration (neues Schema ausführen auf Neon)
+- [ ] API: `POST /api/v1/agencies` (Transaktion)
+- [ ] API: `POST /api/v1/creators` (Transaktion)
+- [ ] API: `GET/PATCH /api/v1/agencies/:id`
+- [ ] API: `GET/PATCH /api/v1/creators/:id`
+- [ ] API: `GET /api/v1/content-plans` + `POST` + `PATCH` + `DELETE`
+- [ ] Dashboard: Admin-Login funktionsfähig
+- [ ] Dashboard: Admin — Agentur-Tab (Liste + Anlegen + Detail)
+- [ ] Dashboard: Admin — Creator-Tab (Liste + Anlegen-Formular aus Screenshot)
+- [ ] Dashboard: Admin — Nutzer-Tab (Liste)
+- [ ] Dashboard: Creator-Login funktionsfähig
+- [ ] Dashboard: Creator — Aufträge-Tab
+- [ ] Dashboard: Creator — Mein Content-Tab
+
+### Phase 2
+- [ ] Agentur-Login + Agentur-Dashboard vollständig
+- [ ] Bot-Integration für Creator (Telegram Chat ID verknüpfen)
+- [ ] Webhook statt Polling
+
+### Phase 3 — SaaS
+- [ ] Stripe Checkout + Webhooks
+- [ ] `agencies.stripe_customer_id` + `plan` + `plan_expires_at` befüllen
+- [ ] Agentur-Onboarding Flow
+
+---
+
+## Sicherheit
+
+- JWT Access Token: 24h Laufzeit
+- Refresh Token: 30 Tage, SHA-256 gehasht in DB
+- Passwort-Hashing: bcrypt mit 14 Runden
+- Account-Sperre: nach 10 Fehlversuchen, 30 Minuten
+- Rate Limiting: 100 req/min allgemein, 10/15min für Login
+- Helmet.js: Security-Headers inkl. HSTS
+- CORS: nur `ALLOWED_ORIGIN` aus ENV
+- Alle Admin-Änderungen an fremden Daten: werden in `logs` protokolliert
+
+---
+
+## Datenschutz (DSGVO)
+
+- Serverstandort: Frankfurt (Neon + Render EU)
+- Logs: automatische Löschung nach 90 Tagen (Cron in Bot + API)
+- Videos: werden nie gespeichert, nur Telegram File-IDs
+- Admin-Zugriff auf Agentur/Creator-Daten: rechtlich sauber als Plattformbetreiber (AVV), technisch geloggt
+- Soft Delete: keine Daten werden hart gelöscht
+- AVV mit jeder Agentur unterzeichnen vor Go-Live
+
+---
+
+## Technische Entscheidungen
+
+| Entscheidung | Begründung |
+|---|---|
+| Node.js ESM überall | kein CJS/ESM-Mix |
+| postgres.js statt ORM | direktes SQL, volle Query-Kontrolle |
+| Zod auf allen Routes | kein unvalidierter Input erreicht die DB |
+| Soft Delete | regulatorisch + Audit-Trail |
+| Render | bestehender Account, EU-Hosting |
+| Neon Frankfurt | DSGVO für sensible Datenkategorie |
+| API `/api/v1/` | Breaking Changes ohne Dashboard-Ausfall |
+| Transaktion bei Creator/Agentur-Anlegen | atomare Operation, kein inkonsistenter State |
+
+---
+
+## Offene Entscheidungen
+
+- [ ] Foto-Upload: Foto-URL (extern) vs. Direktupload zu Cloudflare R2 (Phase 2)
+- [ ] 2FA: TOTP für Admin/Agency (Backlog, vor Phase 3)
+- [ ] Webhook vs. Polling: Bot auf Webhook umstellen (vor Phase 2 Go-Live)
+
+---
+
+*Zuletzt aktualisiert: 2026-04-29*  
+*Alle Änderungen müssen hier dokumentiert werden.*
