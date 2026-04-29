@@ -3,14 +3,15 @@
 # Alle auf Render deployen: dashboard.render.com → neues Blueprint
 
 services:
-  # ── Bot ─────────────────────────────────────────────────────
-  - type: worker
+  # ── Bot (als Web Service — Free Plan unterstützt keine Worker) ──
+  - type: web
     name: creatorflow-bot
     runtime: node
     rootDir: bot
     buildCommand: npm install
     startCommand: node index.js
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: BOT_TOKEN
         sync: false

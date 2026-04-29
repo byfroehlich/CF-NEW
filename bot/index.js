@@ -1,6 +1,7 @@
 import { Telegraf } from 'telegraf'
 import { config } from 'dotenv'
 import cron from 'node-cron'
+import http from 'http'
 import { handleMessage } from './src/handlers/onMessage.js'
 import { handleReply }   from './src/handlers/onReply.js'
 import { handleCommand } from './src/handlers/onCommand.js'
@@ -33,6 +34,13 @@ bot.on('message', async (ctx) => {
     await logError('bot_message_error', err.message, { stack: err.stack })
   }
 })
+
+// Health-Endpoint für Render (Free Plan braucht Web Service statt Worker)
+const PORT = process.env.PORT || 3002
+http.createServer((req, res) => {
+  res.writeHead(200)
+  res.end(JSON.stringify({ ok: true, service: 'creatorflow-bot' }))
+}).listen(PORT)
 
 // Heartbeat alle 5 Minuten
 cron.schedule('*/5 * * * *', async () => {
