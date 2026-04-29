@@ -1,0 +1,283 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { logout, getJobs, getJobSummary, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan } from '../lib/api.js'
+import { clearAuth } from '../lib/auth.js'
+import StatCard from '../components/StatCard.jsx'
+import PlatformFilter from '../components/PlatformFilter.jsx'
+import WeekNav from '../components/WeekNav.jsx'
+
+function getCurrentWeek() {
+  const now = new Date()
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return { week: Math.ceil((((d - yearStart) / 86400000) + 1) / 7), year: d.getUTCFullYear() }
+}
+
+const STATUS_LABELS = { open:'Offen', in_progress:'In Arbeit', delivered:'Geliefert', confirmed:'Bestätigt', carried:'Übertrag' }
+const STATUS_COLORS = { open:'bg-red-100 text-red-700', in_progress:'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', confirmed:'bg-blue-100 text-blue-700', carried:'bg-yellow-100 text-yellow-700' }
+const PLAN_STATUS = { idea:'Idee', planned:'Geplant', filming:'Am Filmen', done:'Fertig' }
+const PLAN_COLORS = { idea:'bg-gray-100 text-gray-600', planned:'bg-blue-100 text-blue-700', filming:'bg-orange-100 text-orange-700', done:'bg-green-100 text-green-700' }
+
+// ── Gradient Header ─────────────────────────────────────────
+function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
+  return (
+    <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 py-4 sticky top-0 z-10">
+      <div className="flex items-center justify-between max-w-2xl mx-auto">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+            <span className="text-white font-bold text-xs">CF</span>
+          </div>
+          <div>
+            <div className="font-bold text-base leading-none">CreatorFlow</div>
+            <div className="text-xs text-white/70 mt-0.5">KW {week}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <WeekNav week={week} year={year} onChange={onWeekChange} />
+          <button onClick={onLogout} className="text-xs text-white/70 hover:text-white">Abmelden</button>
+        </div>
+      </div>
+
+      {/* Pill-Tabs */}
+      <div className="max-w-2xl mx-auto mt-4 flex gap-2">
+        {['Aufträge','Mein Content'].map(t => (
+          <button key={t} onClick={() => {/* handled by parent */}}
+            data-tab={t}
+            className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${tab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+            {t}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Aufträge Tab ─────────────────────────────────────────────
+function AuftraegeTab({ week, year }) {
+  const [platform, setPlatform] = useState('Alle')
+  const { data: summary } = useQuery({ queryKey: ['summary-creator', week, year], queryFn: () => getJobSummary({ week, year }) })
+  const { data: jobs = [], isLoading } = useQuery({ queryKey: ['jobs-creator', week, year, platform], queryFn: () => getJobs({ week, year, ...(platform !== 'Alle' && { platform }) }) })
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Gesamt"   value={summary?.total}  color="gray" />
+        <StatCard label="Offen"    value={summary?.open}   color="red" />
+        <StatCard label="Erledigt" value={summary?.confirmed} color="green" />
+      </div>
+      <PlatformFilter value={platform} onChange={setPlatform} />
+      {isLoading ? (
+        <p className="text-center text-gray-400 text-sm py-12">Lädt…</p>
+      ) : jobs.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="text-4xl mb-3">🌸</div>
+          <p className="text-gray-400 text-sm">Keine Jobs für KW{week}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {jobs.map(j => (
+            <div key={j.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
+              <div>
+                <span className="text-sm font-semibold text-gray-500 uppercase">{j.platform}</span>
+                {j.source_link && <a href={j.source_link} target="_blank" rel="noreferrer" className="ml-2 text-xs text-violet-600 hover:underline">Beispiel</a>}
+              </div>
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[j.status]}`}>{STATUS_LABELS[j.status]}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Mein Content Tab ─────────────────────────────────────────
+function MeinContentTab({ week, year }) {
+  const qc = useQueryClient()
+  const [platform, setPlatform] = useState('Alle')
+  const [soloFilter, setSoloFilter] = useState('Alle')
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ platform:'IG', title:'', description:'', status:'idea', visible_to_agency: false })
+
+  const { data: plans = [], isLoading } = useQuery({
+    queryKey: ['plans-creator', week, year, platform],
+    queryFn: () => getContentPlans({ week, year, ...(platform !== 'Alle' && { platform }) })
+  })
+
+  const createMut = useMutation({
+    mutationFn: data => createContentPlan({ ...data, week_number: week, year }),
+    onSuccess: () => { qc.invalidateQueries(['plans-creator']); setShowForm(false); setForm({ platform:'IG', title:'', description:'', status:'idea', visible_to_agency: false }) }
+  })
+
+  const toggleVisible = useMutation({
+    mutationFn: ({ id, visible_to_agency }) => updateContentPlan(id, { visible_to_agency }),
+    onSuccess: () => qc.invalidateQueries(['plans-creator'])
+  })
+
+  const deleteMut = useMutation({
+    mutationFn: deleteContentPlan,
+    onSuccess: () => qc.invalidateQueries(['plans-creator'])
+  })
+
+  return (
+    <div className="space-y-5">
+      {/* Plattform-Filter */}
+      <div className="flex gap-2 flex-wrap">
+        {['Alle','IG','TK','OF','FL','ML'].map(p => (
+          <button key={p} onClick={() => setPlatform(p)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform===p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {/* Solo/Partner Filter */}
+      <div className="flex gap-2">
+        {['Alle','Solo','Partner'].map(f => (
+          <button key={f} onClick={() => setSoloFilter(f)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${soloFilter===f ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {f === 'Solo' ? '👤 Solo' : f === 'Partner' ? '👥 Partner' : f}
+          </button>
+        ))}
+      </div>
+
+      {/* Neuer Plan Button */}
+      <button
+        onClick={() => setShowForm(v => !v)}
+        className="w-full py-3 border-2 border-dashed border-indigo-300 rounded-xl text-indigo-500 text-sm font-medium hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
+      >
+        + Neuer Content-Plan
+      </button>
+
+      {/* Formular */}
+      {showForm && (
+        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Plattform *</label>
+            <div className="flex gap-2 flex-wrap">
+              {['IG','TK','OF','FL','ML'].map(p => (
+                <button key={p} type="button" onClick={() => setForm(f=>({...f,platform:p}))}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.platform===p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Titel</label>
+            <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Ideen-Titel…" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
+            <textarea rows={3} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Was ist die Idee?" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+            <select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
+              <option value="idea">Idee</option>
+              <option value="planned">Geplant</option>
+              <option value="filming">Am Filmen</option>
+              <option value="done">Fertig</option>
+            </select>
+          </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={form.visible_to_agency} onChange={e=>setForm(f=>({...f,visible_to_agency:e.target.checked}))} className="rounded" />
+            Für Agentur freigeben
+          </label>
+          <div className="flex gap-3">
+            <button onClick={() => setShowForm(false)} className="flex-1 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">Abbrechen</button>
+            <button onClick={() => createMut.mutate(form)} disabled={createMut.isPending} className="flex-1 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              {createMut.isPending ? 'Speichern…' : 'Speichern'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pläne Liste */}
+      {isLoading ? (
+        <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>
+      ) : plans.length === 0 ? (
+        <div className="text-center py-12">
+          <div className="text-4xl mb-3">🎬</div>
+          <p className="text-gray-400 text-sm">Keine Pläne für KW{week}</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {plans.map(p => (
+            <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+              <div className="flex items-start justify-between">
+                <div>
+                  <span className="text-xs font-semibold text-gray-500 uppercase">{p.platform}</span>
+                  {p.title && <p className="text-sm font-medium text-gray-900 mt-0.5">{p.title}</p>}
+                  {p.description && <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>}
+                </div>
+                <span className={`text-xs px-2 py-1 rounded-full font-medium ${PLAN_COLORS[p.status]}`}>{PLAN_STATUS[p.status]}</span>
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
+                  <input type="checkbox" checked={p.visible_to_agency} onChange={e => toggleVisible.mutate({ id: p.id, visible_to_agency: e.target.checked })} className="rounded" />
+                  Agentur sichtbar
+                </label>
+                <button onClick={() => deleteMut.mutate(p.id)} className="text-xs text-red-400 hover:text-red-600">Löschen</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Hauptkomponente ──────────────────────────────────────────
+export default function CreatorDashboard() {
+  const navigate = useNavigate()
+  const { week: cw, year: cy } = getCurrentWeek()
+  const [week, setWeek] = useState(cw)
+  const [year, setYear] = useState(cy)
+  const [activeTab, setActiveTab] = useState('Aufträge')
+
+  async function handleLogout() {
+    await logout()
+    clearAuth()
+    navigate('/login', { replace: true })
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header mit eingebetteten Tab-Buttons */}
+      <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 py-4 sticky top-0 z-10">
+        <div className="flex items-center justify-between max-w-2xl mx-auto">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+              <span className="text-white font-bold text-xs">CF</span>
+            </div>
+            <div>
+              <div className="font-bold text-base leading-none">CreatorFlow</div>
+              <div className="text-xs text-white/70 mt-0.5">KW {week}</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <WeekNav week={week} year={year} onChange={(w,y) => { setWeek(w); setYear(y) }} />
+            <button onClick={handleLogout} className="text-xs text-white/70 hover:text-white">Abmelden</button>
+          </div>
+        </div>
+        {/* Pill-Tabs */}
+        <div className="max-w-2xl mx-auto mt-4 flex gap-2">
+          {['Aufträge','Mein Content'].map(t => (
+            <button key={t} onClick={() => setActiveTab(t)}
+              className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-6 py-6">
+        {activeTab === 'Aufträge'    && <AuftraegeTab week={week} year={year} />}
+        {activeTab === 'Mein Content' && <MeinContentTab week={week} year={year} />}
+      </div>
+    </div>
+  )
+}

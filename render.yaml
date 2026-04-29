@@ -1,0 +1,53 @@
+# CreatorFlow — Render Deployment Config
+# Drei Services: bot, api, dashboard
+# Alle auf Render deployen: dashboard.render.com → neues Blueprint
+
+services:
+  # ── Bot ─────────────────────────────────────────────────────
+  - type: worker
+    name: creatorflow-bot
+    runtime: node
+    rootDir: bot
+    buildCommand: npm install
+    startCommand: node index.js
+    plan: free
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: NODE_ENV
+        value: production
+
+  # ── API ─────────────────────────────────────────────────────
+  - type: web
+    name: creatorflow-api
+    runtime: node
+    rootDir: api
+    buildCommand: npm install
+    startCommand: node index.js
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SETUP_KEY
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
+      - key: NODE_ENV
+        value: production
+
+  # ── Dashboard ────────────────────────────────────────────────
+  - type: web
+    name: creatorflow-dashboard
+    runtime: node
+    rootDir: dashboard
+    buildCommand: npm install && npm run build
+    startCommand: npx serve dist -p $PORT
+    plan: free
+    envVars:
+      - key: VITE_API_URL
+        sync: false
