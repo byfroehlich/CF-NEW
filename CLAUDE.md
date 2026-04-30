@@ -545,8 +545,10 @@ Persistente Leiste am unteren Rand — dient zum schnellen Rollen-Wechsel währe
 - [x] Dashboard: Agentur-Login + Agentur-Dashboard (Aufträge / Creator / Kreativ / Statistik)
 
 ### Nächste Session (Priorität)
-- [ ] **Statistik: Eigener Content** — `GET /api/v1/content-plans/stats` Endpoint + `getContentPlanStats` in api.js + Toggle „Aufträge / Eigener Content" im Creator StatistikTab
-- [ ] **PWA** — `vite-plugin-pwa` + Web App Manifest (CF-Icons) + Service Worker (NetworkFirst für offline Jobs/Pläne) + mobile-first Layout-Optimierungen Creator-Dashboard
+- [x] **Statistik: Eigener Content** — `GET /api/v1/content-plans/stats` Endpoint + `getContentPlanStats` in api.js + Toggle „Aufträge / Eigener Content" im Creator StatistikTab
+- [x] **PWA** — `vite-plugin-pwa` + Web App Manifest (CF-Icons) + Service Worker (NetworkFirst für offline Jobs/Pläne) + mobile-first Layout-Optimierungen Creator-Dashboard
+- [x] **Foto-Upload & Galerie** — multer disk storage, creator_photos-Tabelle, Typlimits (1× Profil, 5× Rolle, 2× Ausweis)
+- [x] **Creator-Aktivierungsflow** — activation_status-Pipeline, Agency/Admin aktiviert/lehnt ab, ID-Pflicht per System-Setting togglebar
 
 ### Phase 2
 - [ ] Agentur-Login + Agentur-Dashboard vollständig (Statistik-Tab ausbauen)
