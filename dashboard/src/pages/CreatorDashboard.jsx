@@ -93,7 +93,7 @@ function AuftraegeTab({ week, year }) {
   )
 }
 
-const STATUS_CYCLE = ['idea', 'planned', 'done']
+const STATUS_CYCLE_WEEK = ['planned', 'done']  // Wochenplan: nur geplant ↔ fertig
 
 function nextWeekOf(week, year) {
   if (week >= 52) return { week: 1, year: year + 1 }
@@ -159,11 +159,11 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
 }
 
 // ── Plan-Karte (wiederverwendet in Wochenplan + Ideen) ───────
-function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, busyId, showWeekBadge }) {
+function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, busyId, showWeekBadge, isIdeaTab }) {
   const nxt = nextWeekOf(week, year)
 
   function cycleStatus() {
-    const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(p.status) + 1) % STATUS_CYCLE.length]
+    const next = STATUS_CYCLE_WEEK[(STATUS_CYCLE_WEEK.indexOf(p.status) + 1) % STATUS_CYCLE_WEEK.length]
     updateMut.mutate({ id: p.id, status: next })
   }
 
@@ -194,8 +194,8 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
               <input
                 type="checkbox"
                 checked={p.status === 'done'}
-                disabled={busyId === p.id}
-                onChange={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })}
+                disabled={busyId === p.id || isIdeaTab}
+                onChange={() => !isIdeaTab && updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })}
                 className="w-4 h-4 rounded accent-green-500 cursor-pointer disabled:opacity-50"
               />
             </label>
@@ -221,13 +221,15 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
               {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>}
             </div>
 
-            <button
-              onClick={cycleStatus}
-              disabled={busyId === p.id}
-              className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 disabled:opacity-50 ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}
-            >
-              {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : PLAN_STATUS[p.status] || p.status}
-            </button>
+            {!isIdeaTab && (
+              <button
+                onClick={cycleStatus}
+                disabled={busyId === p.id}
+                className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 disabled:opacity-50 ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}
+              >
+                {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : PLAN_STATUS[p.status] || p.status}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center justify-between pt-1 border-t border-gray-100 pl-7">
@@ -246,14 +248,24 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-40">
                 Bearbeiten
               </button>
-              {!p.pushed_to_week && (
+              {isIdeaTab ? (
                 <button
-                  onClick={() => pushMut.mutate(p)}
-                  disabled={pushMut.isPending || busyId === p.id}
-                  className="text-xs text-indigo-500 hover:text-indigo-700 font-medium disabled:opacity-40"
+                  onClick={() => updateMut.mutate({ id: p.id, status: 'planned', week_number: week, year })}
+                  disabled={busyId === p.id}
+                  className="text-xs text-violet-600 hover:text-violet-800 font-semibold disabled:opacity-40"
                 >
-                  {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
+                  {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : `→ KW${week} einplanen`}
                 </button>
+              ) : (
+                !p.pushed_to_week && (
+                  <button
+                    onClick={() => pushMut.mutate(p)}
+                    disabled={pushMut.isPending || busyId === p.id}
+                    className="text-xs text-indigo-500 hover:text-indigo-700 font-medium disabled:opacity-40"
+                  >
+                    {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
+                  </button>
+                )
               )}
               <button onClick={() => deleteMut.mutate(p.id)} disabled={busyId === p.id}
                 className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40">
@@ -277,7 +289,7 @@ function MeinContentTab({ week, year }) {
   const [editId, setEditId]         = useState(null)
 
   const EMPTY_WEEK = { platform: 'IG', title: '', description: '', status: 'planned', visible_to_agency: false, partner_type: 'solo' }
-  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', status: 'idea',    visible_to_agency: false, partner_type: 'solo' }
+  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo' }
 
   // Wochenplan: aktuelle KW
   const { data: weekRaw = [], isLoading: weekLoading, isError: weekError, error: weekErr } = useQuery({
@@ -293,7 +305,8 @@ function MeinContentTab({ week, year }) {
 
   const applyPartner = list => partnerFilter === 'Alle' ? list : list.filter(p => p.partner_type === partnerFilter.toLowerCase())
 
-  const weekPlans  = applyPartner(weekRaw)
+  // Wochenplan: nur geplant + fertig (Ideen gehören in den Ideenspeicher)
+  const weekPlans  = applyPartner(weekRaw.filter(p => p.status !== 'idea'))
   const ideaPlans  = applyPartner(allRaw.filter(p => p.status === 'idea'))
 
   const plans      = subTab === 'woche' ? weekPlans : ideaPlans
@@ -340,7 +353,7 @@ function MeinContentTab({ week, year }) {
     || (pushMut.isPending && pushMut.variables?.id)
 
   const gesamt   = weekPlans.length
-  const offen    = weekPlans.filter(p => p.status !== 'done').length
+  const offen    = weekPlans.filter(p => p.status === 'planned').length
   const erledigt = weekPlans.filter(p => p.status === 'done').length
 
   return (
@@ -433,6 +446,7 @@ function MeinContentTab({ week, year }) {
               updateMut={updateMut} deleteMut={deleteMut} pushMut={pushMut}
               busyId={busyId}
               showWeekBadge={subTab === 'ideen'}
+              isIdeaTab={subTab === 'ideen'}
             />
           ))}
         </div>

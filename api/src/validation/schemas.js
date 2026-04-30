@@ -116,6 +116,8 @@ export const contentPlanUpdateSchema = z.object({
   visible_to_agency: z.boolean().optional(),
   platform: z.enum(['IG','TK','OF','FL','ML','OTHER']).optional(),
   partner_type: z.enum(['solo','partner']).optional(),
+  week_number: z.number().int().min(1).max(53).optional(),
+  year: z.number().int().min(2024).optional(),
   pushed_to_week: z.number().int().optional().nullable(),
   pushed_to_year: z.number().int().optional().nullable(),
 })
