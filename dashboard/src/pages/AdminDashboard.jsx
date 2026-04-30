@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getCreators, getAgencies, createCreator, createAgency, getLogs, getLogSummary, updateCreatorPhoto } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getCreators, getAgencies, createCreator, updateCreator, createAgency, updateAgency, getLogs, getLogSummary, getCreatorPhotos, uploadFile, addCreatorPhoto, activateCreator, rejectCreator, getSystemSettings, updateSystemSetting } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -86,37 +86,243 @@ function AuftraegeTab({ week, year }) {
   )
 }
 
-function resizeImage(file, maxSize = 400) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = reject
-    reader.onload = e => {
-      const img = new Image()
-      img.onerror = reject
-      img.onload = () => {
-        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1)
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.round(img.width * scale)
-        canvas.height = Math.round(img.height * scale)
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', 0.85))
-      }
-      img.src = e.target.result
-    }
-    reader.readAsDataURL(file)
+const ACTIVATION_BADGE = {
+  pending:'bg-gray-100 text-gray-500', id_uploaded:'bg-blue-100 text-blue-700',
+  ai_checked:'bg-violet-100 text-violet-700', agency_confirmed:'bg-amber-100 text-amber-700',
+  active:'bg-green-100 text-green-700', rejected:'bg-red-100 text-red-700',
+}
+const ACTIVATION_LABEL = {
+  pending:'Ausstehend', id_uploaded:'Ausweis hoch', ai_checked:'KI geprüft',
+  agency_confirmed:'Bestätigt', active:'Freigeschaltet', rejected:'Abgelehnt',
+}
+
+// ── Admin Creator Card ───────────────────────────────────────
+function AdminCreatorCard({ c, agencies, qc }) {
+  const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editForm, setEditForm] = useState(null)
+  const [rejectOpen, setRejectOpen] = useState(false)
+  const [rejectReason, setRejectReason] = useState('')
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+
+  const age = c.birthday ? Math.floor((Date.now() - new Date(c.birthday)) / 31557600000) : null
+  const agencyName = agencies.find(a => a.id === c.agency_id)?.name
+  const needsActivation = ['pending','id_uploaded','ai_checked'].includes(c.activation_status)
+
+  const { data: photos = [], refetch: refetchPhotos } = useQuery({
+    queryKey: ['creator-photos-admin', c.id],
+    queryFn: () => getCreatorPhotos(c.id),
+    enabled: expanded
   })
+
+  const activateMut = useMutation({
+    mutationFn: () => activateCreator(c.id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['creators-admin'] }),
+    onError: e => alert(e.response?.data?.error || 'Fehler beim Freischalten')
+  })
+  const rejectMut = useMutation({
+    mutationFn: () => rejectCreator(c.id, rejectReason),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['creators-admin'] }); setRejectOpen(false) },
+    onError: e => alert(e.response?.data?.error || 'Fehler')
+  })
+  const editMut = useMutation({
+    mutationFn: data => updateCreator(c.id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['creators-admin'] }); setEditing(false) },
+    onError: e => alert(e.response?.data?.error || 'Fehler beim Speichern')
+  })
+
+  async function handleProfilePhoto(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setUploadingPhoto(true)
+    try {
+      const { url } = await uploadFile(file, 'photo')
+      await addCreatorPhoto(c.id, { url, type: 'profile' })
+      qc.invalidateQueries({ queryKey: ['creators-admin'] })
+      refetchPhotos()
+    } catch(err) {
+      alert('Upload fehlgeschlagen: ' + (err.response?.data?.error || err.message))
+    } finally { setUploadingPhoto(false) }
+  }
+
+  function openEdit() {
+    setEditForm({ real_name:c.real_name||'', artist_name:c.artist_name||'', contact_email:c.contact_email||'', phone:c.phone||'', birthday:c.birthday?.slice(0,10)||'', notes:c.notes||'', platforms:[...(c.platforms||[])], telegram_chat_id:c.telegram_chat_id||'', billing_party:c.billing_party||'agency' })
+    setEditing(true)
+  }
+
+  const profilePhoto = photos.find(p => p.type === 'profile')
+  const displayPhoto = profilePhoto?.url || c.photo_url
+  const rolePhotos   = photos.filter(p => p.type === 'role')
+  const idPhotos     = photos.filter(p => p.type === 'id_document')
+
+  return (
+    <div className={`bg-white rounded-xl border p-4 space-y-3 ${needsActivation && c.activation_status !== 'pending' ? 'border-blue-200' : 'border-gray-200'}`}>
+      <div className="flex items-start gap-3">
+        <label className="relative cursor-pointer group flex-shrink-0">
+          {displayPhoto
+            ? <img src={displayPhoto} className="w-16 h-16 rounded-xl object-cover" alt="" />
+            : <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white font-bold text-xl">{(c.real_name||'?')[0]}</div>
+          }
+          <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+            {uploadingPhoto ? <span className="text-white text-xs">…</span>
+              : <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+            }
+          </div>
+          <input type="file" accept="image/*" className="sr-only" onChange={handleProfilePhoto} disabled={uploadingPhoto} />
+        </label>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between gap-1">
+            <div>
+              <p className="font-semibold text-gray-900 text-sm leading-tight">{c.real_name}</p>
+              {c.artist_name && <p className="text-xs text-violet-500 font-medium">@{c.artist_name}</p>}
+              {agencyName && <p className="text-xs text-gray-400">{agencyName}</p>}
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <button onClick={openEdit} className="p-1 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+              </button>
+              <button onClick={() => setExpanded(v => !v)} className="p-1 rounded text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+                <svg className={`w-3.5 h-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+            </div>
+          </div>
+          <div className="flex gap-1 mt-1 flex-wrap">
+            {c.platforms?.map(p => <PlatformIcon key={p} platform={p} size="badge" />)}
+          </div>
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ACTIVATION_BADGE[c.activation_status] || 'bg-gray-100 text-gray-500'}`}>
+              {ACTIVATION_LABEL[c.activation_status] || 'Ausstehend'}
+            </span>
+            {age !== null && (
+              <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${age < 18 ? 'bg-red-100 text-red-700' : 'bg-green-50 text-green-700'}`}>
+                {age}J {age < 18 ? '⚠' : '✓18+'}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Aktivierung */}
+      {needsActivation && c.activation_status !== 'pending' && !editing && (
+        <div className="pt-1">
+          {rejectOpen ? (
+            <div className="space-y-2">
+              <input placeholder="Ablehnungsgrund" value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-red-400" />
+              <div className="flex gap-2">
+                <button onClick={() => rejectMut.mutate()} disabled={rejectMut.isPending}
+                  className="flex-1 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 disabled:opacity-50">Ablehnen</button>
+                <button onClick={() => setRejectOpen(false)} className="px-3 py-1.5 border border-gray-300 text-xs rounded-lg">Abbrechen</button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <button onClick={() => activateMut.mutate()} disabled={activateMut.isPending}
+                className="flex-1 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50">
+                {activateMut.isPending ? '…' : '✓ Freischalten'}
+              </button>
+              <button onClick={() => setRejectOpen(true)} className="flex-1 py-1.5 border border-red-300 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-50">
+                ✕ Ablehnen
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Edit */}
+      {editing && editForm && (
+        <div className="space-y-3 border-t border-gray-100 pt-3">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bearbeiten</p>
+          {[['real_name','Bürgerlicher Name','text'],['artist_name','Künstlername','text'],['contact_email','E-Mail','email'],['phone','Telefon','tel'],['telegram_chat_id','Telegram Chat ID','text']].map(([key,label,type]) => (
+            <div key={key}>
+              <label className="text-xs text-gray-500 mb-0.5 block">{label}</label>
+              <input type={type} value={editForm[key]||''} onChange={e => setEditForm(f=>({...f,[key]:e.target.value}))}
+                className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            </div>
+          ))}
+          <div>
+            <label className="text-xs text-gray-500 mb-0.5 block">Geburtstag</label>
+            <input type="date" value={editForm.birthday} onChange={e => setEditForm(f=>({...f,birthday:e.target.value}))}
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Plattformen</label>
+            <div className="flex gap-1.5 flex-wrap">
+              {['IG','TK','OF','FL','ML'].map(p => (
+                <PlatformIcon key={p} platform={p} size="sm" active={editForm.platforms.includes(p)}
+                  onClick={() => setEditForm(f=>({...f,platforms:f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]}))} />
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-1 block">Abrechnung</label>
+            <div className="flex gap-2">
+              {[['agency','Agentur zahlt'],['creator','Creator zahlt']].map(([val,label]) => (
+                <button key={val} type="button" onClick={() => setEditForm(f=>({...f,billing_party:val}))}
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${editForm.billing_party===val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 mb-0.5 block">Notizen (intern)</label>
+            <textarea rows={2} value={editForm.notes} onChange={e => setEditForm(f=>({...f,notes:e.target.value}))}
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setEditing(false)} className="flex-1 py-1.5 border border-gray-300 text-sm text-gray-700 rounded-lg hover:bg-gray-50">Abbrechen</button>
+            <button onClick={() => editMut.mutate(editForm)} disabled={editMut.isPending}
+              className="flex-1 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+              {editMut.isPending ? 'Speichern…' : 'Speichern'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Expanded Details */}
+      {expanded && !editing && (
+        <div className="border-t border-gray-100 pt-3 space-y-3 text-xs text-gray-500">
+          {c.contact_email && <div className="flex items-center gap-1.5"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>{c.contact_email}</div>}
+          {c.phone && <div className="flex items-center gap-1.5"><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>{c.phone}</div>}
+          <div className="flex items-center gap-1.5">
+            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            {c.telegram_chat_id ? <span className="text-green-600">Telegram: {c.telegram_chat_id}</span> : <span className="text-gray-400">Telegram ausstehend</span>}
+          </div>
+          {c.billing_party && <div className="text-xs text-gray-400">Abrechnung: <span className="font-medium text-gray-600">{c.billing_party === 'agency' ? 'Agentur' : 'Creator'}</span></div>}
+          {c.notes && <div className="bg-gray-50 rounded-lg px-2.5 py-2 text-xs text-gray-500 italic">{c.notes}</div>}
+
+          {rolePhotos.length > 0 && (
+            <div>
+              <p className="text-gray-400 mb-1.5">Rollenfotos ({rolePhotos.length})</p>
+              <div className="flex gap-2 flex-wrap">
+                {rolePhotos.map(p => <img key={p.id} src={p.url} className="w-16 h-16 rounded-lg object-cover border border-gray-200" alt="" />)}
+              </div>
+            </div>
+          )}
+          {idPhotos.length > 0 && (
+            <div>
+              <p className="text-gray-400 mb-1.5">Ausweisdokumente ({idPhotos.length})</p>
+              <div className="flex gap-2 flex-wrap">
+                {idPhotos.map(p => <img key={p.id} src={p.url} className="w-24 h-16 rounded-lg object-cover border border-blue-200" alt="" />)}
+              </div>
+            </div>
+          )}
+          <p className="text-gray-300">seit {new Date(c.created_at).toLocaleDateString('de')}</p>
+        </div>
+      )}
+    </div>
+  )
 }
 
 // ── Creator Tab ──────────────────────────────────────────────
-function PLATFORMS_MULTI() {
-  return ['IG','TK','OF','FL','ML']
-}
-
 function CreatorTab() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ real_name:'', artist_name:'', contact_email:'', phone:'', birthday:'', platforms:[], notes:'', agency_id:'', login_email:'', login_password:'' })
   const [err, setErr] = useState('')
+  const [search, setSearch] = useState('')
 
   const { data: creators = [] } = useQuery({ queryKey: ['creators-admin'], queryFn: getCreators })
   const { data: agencies = [] } = useQuery({ queryKey: ['agencies-admin'], queryFn: getAgencies })
@@ -127,48 +333,38 @@ function CreatorTab() {
     onError: e => setErr(e.response?.data?.error || 'Fehler beim Anlegen')
   })
 
-  const photoMut = useMutation({
-    mutationFn: ({ id, photo_url }) => updateCreatorPhoto(id, photo_url),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['creators-admin'] }),
-    onError: e => alert('Foto-Upload fehlgeschlagen: ' + (e.response?.data?.error || e.message))
+  const filtered = creators.filter(c => {
+    if (!search) return true
+    const s = search.toLowerCase()
+    return (c.real_name||'').toLowerCase().includes(s) || (c.artist_name||'').toLowerCase().includes(s)
   })
-
-  async function handlePhotoUpload(creatorId, e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    try {
-      const dataUrl = await resizeImage(file, 400)
-      photoMut.mutate({ id: creatorId, photo_url: dataUrl })
-    } catch { alert('Bild konnte nicht verarbeitet werden') }
-  }
-
-  function togglePlatform(p) {
-    setForm(f => ({ ...f, platforms: f.platforms.includes(p) ? f.platforms.filter(x=>x!==p) : [...f.platforms, p] }))
-  }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-gray-900">Creator-Kartei <span className="text-gray-400 font-normal text-sm">{creators.length} Creator</span></h2>
-        <button onClick={() => setShowForm(v => !v)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700">+ Creator onboarden</button>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold text-gray-900">Creator-Kartei <span className="text-gray-400 font-normal text-sm">{creators.length}</span></h2>
+        <button onClick={() => setShowForm(v=>!v)} className="flex-shrink-0 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700">+ Creator onboarden</button>
       </div>
+
+      <input type="search" placeholder="Nach Name suchen…" value={search} onChange={e => setSearch(e.target.value)}
+        className="w-full px-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
 
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
           <h3 className="font-semibold text-gray-900">+ Neuer Creator</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Bürgerlicher Name *" value={form.real_name} onChange={v => setForm(f=>({...f,real_name:v}))} placeholder="z.B. Maja Schmidt" />
-            <Field label="Künstlername" value={form.artist_name} onChange={v => setForm(f=>({...f,artist_name:v}))} placeholder="z.B. MajaCurvyOfficial" />
+            <Field label="Bürgerlicher Name *" value={form.real_name} onChange={v=>setForm(f=>({...f,real_name:v}))} placeholder="z.B. Maja Schmidt" />
+            <Field label="Künstlername" value={form.artist_name} onChange={v=>setForm(f=>({...f,artist_name:v}))} placeholder="z.B. MajaCurvyOfficial" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="E-Mail" value={form.contact_email} onChange={v => setForm(f=>({...f,contact_email:v}))} placeholder="maja@example.com" type="email" />
-            <Field label="Telefon" value={form.phone} onChange={v => setForm(f=>({...f,phone:v}))} placeholder="+49 …" />
+            <Field label="E-Mail" value={form.contact_email} onChange={v=>setForm(f=>({...f,contact_email:v}))} placeholder="maja@example.com" type="email" />
+            <Field label="Telefon" value={form.phone} onChange={v=>setForm(f=>({...f,phone:v}))} placeholder="+49 …" />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Field label="Geburtstag" value={form.birthday} onChange={v => setForm(f=>({...f,birthday:v}))} type="date" />
+            <Field label="Geburtstag" value={form.birthday} onChange={v=>setForm(f=>({...f,birthday:v}))} type="date" />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Agentur *</label>
-              <select value={form.agency_id} onChange={e => setForm(f=>({...f,agency_id:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
+              <select value={form.agency_id} onChange={e=>setForm(f=>({...f,agency_id:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
                 <option value="">Agentur wählen…</option>
                 {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
@@ -177,20 +373,19 @@ function CreatorTab() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">Plattformen *</label>
             <div className="flex gap-2 flex-wrap">
-              {PLATFORMS_MULTI().map(p => (
+              {['IG','TK','OF','FL','ML'].map(p => (
                 <PlatformIcon key={p} platform={p} size="sm" active={form.platforms.includes(p)}
-                  onClick={() => togglePlatform(p)} />
+                  onClick={() => setForm(f=>({...f,platforms:f.platforms.includes(p)?f.platforms.filter(x=>x!==p):[...f.platforms,p]}))} />
               ))}
             </div>
           </div>
-          <Field label="Interne Notizen" value={form.notes} onChange={v => setForm(f=>({...f,notes:v}))} placeholder="Besonderheiten, Konditionen, Absprachen…" multiline />
+          <Field label="Interne Notizen" value={form.notes} onChange={v=>setForm(f=>({...f,notes:v}))} placeholder="Besonderheiten…" multiline />
           <div className="border-t border-gray-100 pt-4">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Login-Account *</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Field label="Login E-Mail *" value={form.login_email} onChange={v => setForm(f=>({...f,login_email:v}))} placeholder="maja@creatorflow.de" type="email" />
-              <Field label="Passwort (min. 8 Z.) *" value={form.login_password} onChange={v => setForm(f=>({...f,login_password:v}))} type="password" placeholder="••••••••" />
+              <Field label="Login E-Mail *" value={form.login_email} onChange={v=>setForm(f=>({...f,login_email:v}))} placeholder="maja@creatorflow.de" type="email" />
+              <Field label="Passwort (min. 8 Z.) *" value={form.login_password} onChange={v=>setForm(f=>({...f,login_password:v}))} type="password" placeholder="••••••••" />
             </div>
-            <p className="text-xs text-gray-400 mt-1">Taucht nach dem Anlegen im Nutzer-Tab auf.</p>
           </div>
           {err && <p className="text-sm text-red-600">{err}</p>}
           <div className="flex gap-3">
@@ -202,71 +397,11 @@ function CreatorTab() {
         </div>
       )}
 
-      {creators.length === 0 && !showForm ? (
-        <p className="text-center text-gray-400 text-sm py-12">Noch keine Creator angelegt.</p>
+      {filtered.length === 0 && !showForm ? (
+        <p className="text-center text-gray-400 text-sm py-12">{search ? 'Kein Creator gefunden.' : 'Noch keine Creator angelegt.'}</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {creators.map(c => {
-            const age = c.birthday ? Math.floor((Date.now() - new Date(c.birthday)) / 31557600000) : null
-            const agencyName = agencies.find(a => a.id === c.agency_id)?.name
-            return (
-            <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-              <div className="flex items-center gap-3">
-                <label className="relative cursor-pointer group flex-shrink-0">
-                  {c.photo_url
-                    ? <img src={c.photo_url} className="w-12 h-12 rounded-full object-cover" alt="" />
-                    : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white font-bold text-base">{(c.real_name||'?')[0]}</div>
-                  }
-                  <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                    {photoMut.isPending && photoMut.variables?.id === c.id
-                      ? <span className="text-white text-xs">…</span>
-                      : <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
-                    }
-                  </div>
-                  <input type="file" accept="image/*" className="sr-only" onChange={e => handlePhotoUpload(c.id, e)} />
-                </label>
-                <div className="min-w-0">
-                  <p className="font-semibold text-gray-900 text-sm leading-tight">{c.real_name}</p>
-                  {c.artist_name && <p className="text-xs text-violet-500 font-medium mt-0.5">@{c.artist_name}</p>}
-                  {agencyName && <p className="text-xs text-gray-400 mt-0.5">{agencyName}</p>}
-                </div>
-              </div>
-              <div className="flex gap-1.5 flex-wrap">
-                {c.platforms?.map(p => <PlatformIcon key={p} platform={p} size="badge" />)}
-              </div>
-              <div className="space-y-1 text-xs text-gray-500">
-                {c.contact_email && (
-                  <div className="flex items-center gap-1.5 truncate">
-                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                    <span className="truncate">{c.contact_email}</span>
-                  </div>
-                )}
-                {c.phone && (
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
-                    <span>{c.phone}</span>
-                  </div>
-                )}
-                {age !== null && (
-                  <div className="flex items-center gap-1.5">
-                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                    <span>{age} Jahre</span>
-                    {age < 18 ? <span className="text-red-600 font-semibold">⚠ Minderjährig</span> : <span className="text-green-600">✓ 18+</span>}
-                  </div>
-                )}
-                <div className="flex items-center gap-1.5">
-                  <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                  {c.telegram_chat_id ? <span className="text-green-600">Telegram verknüpft</span> : <span className="text-gray-400">Telegram ausstehend</span>}
-                </div>
-              </div>
-              {c.notes && <div className="bg-gray-50 rounded-lg px-2.5 py-2 text-xs text-gray-500 italic">{c.notes}</div>}
-              <div className="flex items-center gap-2 pt-1 border-t border-gray-100 flex-wrap">
-                <span className={`text-xs px-2 py-0.5 rounded-full ${c.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{c.active ? 'Aktiv' : 'Inaktiv'}</span>
-                <span className="text-xs text-gray-300 ml-auto">seit {new Date(c.created_at).toLocaleDateString('de')}</span>
-              </div>
-            </div>
-            )
-          })}
+          {filtered.map(c => <AdminCreatorCard key={c.id} c={c} agencies={agencies} qc={qc} />)}
         </div>
       )}
     </div>
@@ -279,13 +414,25 @@ function AgenturTab() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name:'', contact_person:'', email:'', phone:'', website:'', address_street:'', address_city:'', address_zip:'', address_country:'DE', notes:'', login_email:'', login_password:'' })
   const [err, setErr] = useState('')
+  const [editId, setEditId] = useState(null)
+  const [editForm, setEditForm] = useState(null)
 
   const { data: agencies = [] } = useQuery({ queryKey: ['agencies-admin'], queryFn: getAgencies })
   const mutation = useMutation({
     mutationFn: createAgency,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agencies-admin'] }); setShowForm(false) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agencies-admin'] }); setShowForm(false); setForm({ name:'',contact_person:'',email:'',phone:'',website:'',address_street:'',address_city:'',address_zip:'',address_country:'DE',notes:'',login_email:'',login_password:'' }) },
     onError: e => setErr(e.response?.data?.error || 'Fehler beim Anlegen')
   })
+  const editMut = useMutation({
+    mutationFn: ({ id, ...data }) => updateAgency(id, data),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agencies-admin'] }); setEditId(null) },
+    onError: e => alert(e.response?.data?.error || 'Fehler beim Speichern')
+  })
+
+  function openEdit(a) {
+    setEditForm({ name:a.name||'', contact_person:a.contact_person||'', email:a.email||'', phone:a.phone||'', website:a.website||'', notes:a.notes||'', company_type:a.company_type||'other', tax_id:a.tax_id||'', billing_email:a.billing_email||'' })
+    setEditId(a.id)
+  }
 
   return (
     <div className="space-y-4">
@@ -327,12 +474,52 @@ function AgenturTab() {
       ) : (
         <div className="space-y-3">
           {agencies.map(a => (
-            <div key={a.id} className="bg-white rounded-xl border border-gray-200 px-5 py-4 flex items-center justify-between">
-              <div>
-                <p className="font-medium text-gray-900">{a.name}</p>
-                {a.email && <p className="text-sm text-gray-400">{a.email}</p>}
-              </div>
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${a.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{a.plan}</span>
+            <div key={a.id} className="bg-white rounded-xl border border-gray-200 p-4">
+              {editId === a.id && editForm ? (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bearbeiten</p>
+                  {[['name','Agenturname *','text'],['contact_person','Ansprechpartner','text'],['email','E-Mail','email'],['phone','Telefon','tel'],['website','Website','url'],['billing_email','Rechnungs-E-Mail','email'],['tax_id','Steuernummer','text']].map(([key,label,type]) => (
+                    <div key={key}>
+                      <label className="text-xs text-gray-500 mb-0.5 block">{label}</label>
+                      <input type={type} value={editForm[key]||''} onChange={e=>setEditForm(f=>({...f,[key]:e.target.value}))}
+                        className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">Unternehmensform</label>
+                    <select value={editForm.company_type} onChange={e=>setEditForm(f=>({...f,company_type:e.target.value}))}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
+                      {[['gmbh','GmbH'],['ug','UG'],['einzelunternehmen','Einzelunternehmen'],['gbr','GbR'],['other','Sonstige']].map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-0.5 block">Interne Notizen</label>
+                    <textarea rows={2} value={editForm.notes} onChange={e=>setEditForm(f=>({...f,notes:e.target.value}))}
+                      className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditId(null)} className="flex-1 py-1.5 border border-gray-300 text-sm text-gray-700 rounded-lg hover:bg-gray-50">Abbrechen</button>
+                    <button onClick={() => editMut.mutate({ id: a.id, ...editForm })} disabled={editMut.isPending}
+                      className="flex-1 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+                      {editMut.isPending ? 'Speichern…' : 'Speichern'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-gray-900">{a.name}</p>
+                    {a.email && <p className="text-sm text-gray-400">{a.email}</p>}
+                    {a.contact_person && <p className="text-xs text-gray-400">{a.contact_person}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${a.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{a.plan}</span>
+                    <button onClick={() => openEdit(a)} className="p-1.5 rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -343,10 +530,17 @@ function AgenturTab() {
 
 // ── System Tab ───────────────────────────────────────────────
 function SystemTab() {
+  const qc = useQueryClient()
   const [level, setLevel] = useState('Alle Level')
   const [source, setSource] = useState('Alle Quellen')
   const { data: summary } = useQuery({ queryKey: ['log-summary'], queryFn: getLogSummary, refetchInterval: 30_000 })
   const { data: logs = [] } = useQuery({ queryKey: ['logs', level, source], queryFn: () => getLogs({ level: level === 'Alle Level' ? undefined : level.toLowerCase(), source: source === 'Alle Quellen' ? undefined : source.toLowerCase() }), refetchInterval: 30_000 })
+  const { data: settings } = useQuery({ queryKey: ['system-settings'], queryFn: getSystemSettings })
+
+  const settingMut = useMutation({
+    mutationFn: ({ key, value }) => updateSystemSetting(key, value),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['system-settings'] })
+  })
 
   return (
     <div className="space-y-6">
@@ -399,6 +593,25 @@ function SystemTab() {
         </div>
       )}
       <p className="text-center text-xs text-gray-400">Automatische Aktualisierung alle 30 Sekunden</p>
+
+      {/* System-Einstellungen */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Einstellungen</p>
+        <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+          <div className="px-5 py-3 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-gray-900">Ausweis-Verifikation erforderlich</p>
+              <p className="text-xs text-gray-400">Wenn aus, können Creator ohne Ausweis-Upload freigeschaltet werden (Testmodus).</p>
+            </div>
+            <button
+              onClick={() => settingMut.mutate({ key: 'require_id_verification', value: !(settings?.require_id_verification === true) })}
+              disabled={settingMut.isPending}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${settings?.require_id_verification ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${settings?.require_id_verification ? 'translate-x-5' : 'translate-x-0'}`} />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

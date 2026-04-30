@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, updateMyPhoto } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -810,29 +810,87 @@ function StatistikTab({ week, year }) {
   )
 }
 
-// ── Bild-Resize Hilfsfunktion ────────────────────────────────
-function resizeImage(file, maxSize = 400) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = reject
-    reader.onload = e => {
-      const img = new Image()
-      img.onerror = reject
-      img.onload = () => {
-        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1)
-        const canvas = document.createElement('canvas')
-        canvas.width = Math.round(img.width * scale)
-        canvas.height = Math.round(img.height * scale)
-        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-        resolve(canvas.toDataURL('image/jpeg', 0.85))
-      }
-      img.src = e.target.result
-    }
-    reader.readAsDataURL(file)
-  })
+const FIELD_LABELS = { artist_name: 'Künstlername', photo_url: 'Foto', contact_email: 'E-Mail', phone: 'Telefon', platforms: 'Plattformen' }
+
+const ACTIVATION_STATUS = {
+  pending:           { label: 'Konto ausstehend', color: 'bg-gray-100 text-gray-600', icon: '⏳' },
+  id_uploaded:       { label: 'Ausweis hochgeladen', color: 'bg-blue-100 text-blue-700', icon: '📄' },
+  ai_checked:        { label: 'KI geprüft', color: 'bg-violet-100 text-violet-700', icon: '🤖' },
+  agency_confirmed:  { label: 'Wird bestätigt', color: 'bg-amber-100 text-amber-700', icon: '✅' },
+  active:            { label: 'Freigeschaltet', color: 'bg-green-100 text-green-700', icon: '✅' },
+  rejected:          { label: 'Abgelehnt', color: 'bg-red-100 text-red-700', icon: '❌' },
 }
 
-const FIELD_LABELS = { artist_name: 'Künstlername', photo_url: 'Foto', contact_email: 'E-Mail', phone: 'Telefon', platforms: 'Plattformen' }
+// ── Foto-Upload Helper ───────────────────────────────────────
+async function uploadAndRecord(file, creatorId, type, label = null) {
+  const { url } = await uploadFile(file, type === 'id_document' ? 'id_document' : 'photo')
+  return addCreatorPhoto(creatorId, { url, type, label })
+}
+
+// ── Galerie-Abschnitt ────────────────────────────────────────
+function PhotoGallery({ creatorId, photos, type, maxCount, label, onUploaded, onDeleted, accept = 'image/*', note }) {
+  const [uploading, setUploading] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const filtered = photos.filter(p => p.type === type)
+  const canAdd = filtered.length < maxCount
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !canAdd) return
+    e.target.value = ''
+    setUploading(true)
+    try {
+      await uploadAndRecord(file, creatorId, type, null)
+      onUploaded()
+    } catch(err) {
+      alert('Upload fehlgeschlagen: ' + (err.response?.data?.error || err.message))
+    } finally { setUploading(false) }
+  }
+
+  async function handleDelete(photoId) {
+    setDeletingId(photoId)
+    try {
+      await deleteCreatorPhoto(creatorId, photoId)
+      onDeleted()
+    } catch(err) {
+      alert('Löschen fehlgeschlagen: ' + (err.response?.data?.error || err.message))
+    } finally { setDeletingId(null) }
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label} ({filtered.length}/{maxCount})</p>
+      </div>
+      {note && <p className="text-xs text-gray-400 mb-2">{note}</p>}
+      <div className="flex gap-2 flex-wrap">
+        {filtered.map(p => (
+          <div key={p.id} className="relative group w-20 h-20 rounded-xl overflow-hidden border border-gray-200">
+            <img src={p.url} className="w-full h-full object-cover" alt="" />
+            <button
+              onClick={() => handleDelete(p.id)}
+              disabled={deletingId === p.id}
+              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50">
+              {deletingId === p.id ? '…' : '×'}
+            </button>
+          </div>
+        ))}
+        {canAdd && (
+          <label className="w-20 h-20 rounded-xl border-2 border-dashed border-violet-300 flex flex-col items-center justify-center cursor-pointer hover:bg-violet-50 transition-colors">
+            {uploading
+              ? <span className="text-violet-400 text-xs">…</span>
+              : <>
+                  <svg className="w-6 h-6 text-violet-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                  <span className="text-xs text-violet-400">Hinzufügen</span>
+                </>
+            }
+            <input type="file" accept={accept} className="sr-only" onChange={handleUpload} disabled={uploading || !canAdd} capture={type === 'id_document' ? undefined : 'environment'} />
+          </label>
+        )}
+      </div>
+    </div>
+  )
+}
 
 // ── Profil Tab ───────────────────────────────────────────────
 function ProfilTab() {
@@ -840,18 +898,18 @@ function ProfilTab() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(null)
   const [formErr, setFormErr] = useState('')
-  const fileRef = useState(null)
+  const [profileUploading, setProfileUploading] = useState(false)
 
   const { data: profile, isLoading } = useQuery({ queryKey: ['my-profile'], queryFn: getMyProfile })
+  const { data: photos = [], refetch: refetchPhotos } = useQuery({
+    queryKey: ['my-photos', profile?.id],
+    queryFn: () => getCreatorPhotos(profile.id),
+    enabled: !!profile?.id
+  })
   const { data: requests = [] } = useQuery({ queryKey: ['change-requests-creator'], queryFn: getChangeRequests })
 
   const hasPending = requests.some(r => r.status === 'pending')
-
-  const photoMut = useMutation({
-    mutationFn: updateMyPhoto,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['my-profile'] }),
-    onError: e => alert('Foto-Upload fehlgeschlagen: ' + (e.response?.data?.error || e.message))
-  })
+  const profilePhoto = photos.find(p => p.type === 'profile')
 
   const requestMut = useMutation({
     mutationFn: createChangeRequest,
@@ -859,15 +917,18 @@ function ProfilTab() {
     onError: e => setFormErr(e.response?.data?.error || 'Fehler beim Senden')
   })
 
-  async function handlePhotoUpload(e) {
+  async function handleProfilePhotoUpload(e) {
     const file = e.target.files?.[0]
-    if (!file) return
+    if (!file || !profile) return
+    e.target.value = ''
+    setProfileUploading(true)
     try {
-      const dataUrl = await resizeImage(file, 400)
-      photoMut.mutate(dataUrl)
-    } catch {
-      alert('Bild konnte nicht verarbeitet werden')
-    }
+      await uploadAndRecord(file, profile.id, 'profile')
+      qc.invalidateQueries({ queryKey: ['my-photos', profile.id] })
+      qc.invalidateQueries({ queryKey: ['my-profile'] })
+    } catch(err) {
+      alert('Upload fehlgeschlagen: ' + (err.response?.data?.error || err.message))
+    } finally { setProfileUploading(false) }
   }
 
   function openForm() {
@@ -895,26 +956,42 @@ function ProfilTab() {
   if (isLoading) return <p className="text-center text-gray-400 text-sm py-12">Lädt…</p>
   if (!profile) return <p className="text-center text-gray-400 text-sm py-12">Profil nicht gefunden</p>
 
+  const status = ACTIVATION_STATUS[profile.activation_status] || ACTIVATION_STATUS.pending
+  const displayPhoto = profilePhoto?.url || profile.photo_url
+
   return (
     <div className="space-y-4">
+      {/* Aktivierungs-Status */}
+      <div className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border text-xs font-medium ${
+        profile.activation_status === 'active' ? 'bg-green-50 border-green-200 text-green-700' :
+        profile.activation_status === 'rejected' ? 'bg-red-50 border-red-200 text-red-700' :
+        'bg-amber-50 border-amber-200 text-amber-700'
+      }`}>
+        <span>{status.icon}</span>
+        <span>{status.label}</span>
+        {profile.activation_status !== 'active' && profile.activation_status !== 'rejected' && (
+          <span className="ml-auto text-gray-400">Agentur schaltet dich frei</span>
+        )}
+      </div>
+
       {/* Profil-Karte */}
       <div className="bg-white rounded-2xl border border-gray-200 p-5">
         {/* Avatar + Upload */}
         <div className="flex items-center gap-4 mb-5">
           <label className="relative cursor-pointer group flex-shrink-0">
-            {profile.photo_url
-              ? <img src={profile.photo_url} className="w-20 h-20 rounded-full object-cover" alt="" />
+            {displayPhoto
+              ? <img src={displayPhoto} className="w-20 h-20 rounded-full object-cover" alt="" />
               : <div className="w-20 h-20 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white font-bold text-2xl">
                   {(profile.artist_name || '?')[0].toUpperCase()}
                 </div>
             }
             <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-              {photoMut.isPending
+              {profileUploading
                 ? <span className="text-white text-xs">…</span>
                 : <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
               }
             </div>
-            <input type="file" accept="image/*" className="sr-only" onChange={handlePhotoUpload} disabled={photoMut.isPending} />
+            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={handleProfilePhotoUpload} disabled={profileUploading} />
           </label>
           <div>
             <p className="font-bold text-gray-900 text-xl leading-tight">{profile.artist_name || '(kein Künstlername)'}</p>
@@ -956,6 +1033,50 @@ function ProfilTab() {
             </button>
           )}
         </div>
+      </div>
+
+      {/* Rollenfotos / Galerie */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-5">
+        <p className="text-sm font-semibold text-gray-800">Meine Fotos</p>
+        <PhotoGallery
+          creatorId={profile.id}
+          photos={photos}
+          type="role"
+          maxCount={5}
+          label="Rollenfotos / Galerie"
+          note="Zeig wie du arbeitest — 5 Fotos, z.B. verschiedene Looks oder Setups."
+          onUploaded={() => refetchPhotos()}
+          onDeleted={() => refetchPhotos()}
+        />
+      </div>
+
+      {/* Ausweis-Upload */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5 space-y-3">
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Altersnachweis (Ausweis)</p>
+          <p className="text-xs text-gray-400 mt-0.5">Wird nur von deiner Agentur gesehen und dient zur Freischaltung deines Kontos.</p>
+        </div>
+        <PhotoGallery
+          creatorId={profile.id}
+          photos={photos}
+          type="id_document"
+          maxCount={2}
+          label="Ausweisfoto"
+          note="Vorder- und Rückseite deines Personalausweises oder Reisepasses."
+          accept="image/*"
+          onUploaded={() => { refetchPhotos(); qc.invalidateQueries({ queryKey: ['my-profile'] }) }}
+          onDeleted={() => refetchPhotos()}
+        />
+        {profile.activation_status === 'pending' && photos.filter(p => p.type === 'id_document').length === 0 && (
+          <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 text-xs text-amber-700">
+            📋 Lade deinen Ausweis hoch damit deine Agentur dein Konto freischalten kann.
+          </div>
+        )}
+        {photos.filter(p => p.type === 'id_document').length > 0 && profile.activation_status === 'pending' && (
+          <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-xs text-blue-700">
+            ✅ Ausweis hochgeladen — deine Agentur wird dein Konto in Kürze freischalten.
+          </div>
+        )}
       </div>
 
       {/* Änderungsformular */}

@@ -17,7 +17,8 @@ router.get('/me', requireAnyRole, async (req, res) => {
   }
   try {
     const [creator] = await sql`
-      SELECT id, agency_id, artist_name, photo_url, contact_email, phone, platforms, active, created_at
+      SELECT id, agency_id, artist_name, photo_url, contact_email, phone, platforms,
+             activation_status, id_verified, billing_party, active, created_at
       FROM creators WHERE id = ${req.user.creator_id} AND deleted_at IS NULL
     `
     if (!creator) return res.status(404).json({ error: 'Creator nicht gefunden' })
@@ -144,6 +145,96 @@ router.delete('/:id', requireAdmin, async (req, res) => {
     await sql`UPDATE creators SET deleted_at = now() WHERE id = ${req.params.id}`
     res.json({ ok: true })
   } catch (err) {
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// PATCH /api/v1/creators/:id/activate — Agency/Admin aktiviert Creator manuell
+router.patch('/:id/activate', requireAgencyOrAdmin, async (req, res) => {
+  const { id } = req.params
+  try {
+    // Check if ID verification is required
+    const [setting] = await sql`SELECT value FROM system_settings WHERE key = 'require_id_verification'`
+    const requireVerification = setting ? setting.value === true : true
+
+    if (requireVerification) {
+      // Must have at least one id_document photo
+      const [{ count }] = await sql`
+        SELECT COUNT(*) FROM creator_photos
+        WHERE creator_id = ${id} AND type = 'id_document' AND deleted_at IS NULL
+      `
+      if (parseInt(count) === 0) {
+        return res.status(400).json({ error: 'Ausweis-Upload erforderlich (oder Verifikationspflicht in Einstellungen deaktivieren)' })
+      }
+    }
+
+    const where = req.user.role === 'admin'
+      ? sql`id = ${id} AND deleted_at IS NULL`
+      : sql`id = ${id} AND agency_id = ${req.user.agency_id} AND deleted_at IS NULL`
+
+    const [creator] = await sql`
+      UPDATE creators SET
+        activation_status = 'active',
+        id_verified = true,
+        id_verified_at = now(),
+        id_verified_by = ${req.user.id},
+        active = true
+      WHERE ${where}
+      RETURNING id, activation_status, id_verified, active
+    `
+    if (!creator) return res.status(404).json({ error: 'Creator nicht gefunden' })
+    res.json(creator)
+  } catch (err) {
+    console.error('Activate error:', err)
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// PATCH /api/v1/creators/:id/reject — Agency/Admin lehnt Creator ab
+router.patch('/:id/reject', requireAgencyOrAdmin, async (req, res) => {
+  const { id } = req.params
+  const { reason } = req.body
+  try {
+    const where = req.user.role === 'admin'
+      ? sql`id = ${id} AND deleted_at IS NULL`
+      : sql`id = ${id} AND agency_id = ${req.user.agency_id} AND deleted_at IS NULL`
+
+    const [creator] = await sql`
+      UPDATE creators SET
+        activation_status = 'rejected',
+        id_ai_result = ${reason ? JSON.stringify({ rejection_reason: reason }) : null}::jsonb
+      WHERE ${where}
+      RETURNING id, activation_status
+    `
+    if (!creator) return res.status(404).json({ error: 'Creator nicht gefunden' })
+    res.json(creator)
+  } catch {
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// GET /api/v1/creators/:id/pending — liefert alle Creator die auf Freischaltung warten
+// (verwendet von Agency/Admin Dashboard)
+router.get('/pending-activation', requireAgencyOrAdmin, async (req, res) => {
+  try {
+    const creators = req.user.role === 'admin'
+      ? await sql`
+          SELECT c.id, c.agency_id, c.artist_name, c.real_name, c.photo_url, c.activation_status, c.created_at,
+                 a.name as agency_name
+          FROM creators c LEFT JOIN agencies a ON c.agency_id = a.id
+          WHERE c.activation_status IN ('pending','id_uploaded','ai_checked') AND c.deleted_at IS NULL
+          ORDER BY c.created_at DESC
+        `
+      : await sql`
+          SELECT id, agency_id, artist_name, real_name, photo_url, activation_status, created_at
+          FROM creators
+          WHERE agency_id = ${req.user.agency_id}
+            AND activation_status IN ('pending','id_uploaded','ai_checked')
+            AND deleted_at IS NULL
+          ORDER BY created_at DESC
+        `
+    res.json(creators)
+  } catch {
     res.status(500).json({ error: 'Serverfehler' })
   }
 })
