@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan } from '../lib/api.js'
@@ -574,10 +574,20 @@ function StatistikTab({ week, year }) {
 // ── Hauptkomponente ──────────────────────────────────────────
 export default function CreatorDashboard() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { week: cw, year: cy } = getCurrentWeek()
   const [week, setWeek] = useState(cw)
   const [year, setYear] = useState(cy)
   const [activeTab, setActiveTab] = useState('Aufträge')
+
+  // Alle Tab-Daten sofort beim Login parallel vorladen
+  useEffect(() => {
+    qc.prefetchQuery({ queryKey: ['summary-creator', week, year],    queryFn: () => getJobSummary({ week, year }) })
+    qc.prefetchQuery({ queryKey: ['jobs-creator', week, year, 'Alle'], queryFn: () => getJobs({ week, year }) })
+    qc.prefetchQuery({ queryKey: ['plans-creator', week, year, 'Alle'], queryFn: () => getContentPlans({ week, year }) })
+    qc.prefetchQuery({ queryKey: ['stats-jobs-creator', undefined],  queryFn: () => getJobStats() })
+    qc.prefetchQuery({ queryKey: ['stats-plans-creator', undefined], queryFn: () => getContentPlanStats() })
+  }, [week, year]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleLogout() {
     await logout()
