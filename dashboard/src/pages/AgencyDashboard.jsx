@@ -97,8 +97,35 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', multil
 }
 
 // ── Foto-Upload Sektion ──────────────────────────────────────
+function PhotoLightbox({ url, onClose, onDelete, deleting }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+      <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+        <img src={url} className="w-full max-h-[80vh] object-contain rounded-xl" alt="" />
+        <div className="flex gap-2 mt-3 justify-end">
+          <a href={url} download target="_blank" rel="noreferrer"
+            className="px-3 py-1.5 bg-white text-gray-800 text-xs font-medium rounded-lg hover:bg-gray-100 flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+            Speichern
+          </a>
+          {onDelete && (
+            <button onClick={onDelete} disabled={deleting}
+              className="px-3 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 disabled:opacity-50">
+              {deleting ? '…' : 'Löschen'}
+            </button>
+          )}
+          <button onClick={onClose} className="px-3 py-1.5 bg-gray-700 text-white text-xs font-medium rounded-lg hover:bg-gray-600">Schließen</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PhotoUploadSection({ label, photos, type, max, creatorId, onUploaded, accept = 'image/*' }) {
   const [uploading, setUploading] = useState(false)
+  const [deletingId, setDeletingId] = useState(null)
+  const [lightbox, setLightbox] = useState(null)
+
   async function handleUpload(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -112,12 +139,35 @@ function PhotoUploadSection({ label, photos, type, max, creatorId, onUploaded, a
       alert('Upload fehlgeschlagen: ' + (err.response?.data?.error || err.message))
     } finally { setUploading(false) }
   }
+
+  async function handleDelete(photoId) {
+    setDeletingId(photoId)
+    try {
+      await deleteCreatorPhoto(creatorId, photoId)
+      setLightbox(null)
+      onUploaded()
+    } catch (err) {
+      alert('Löschen fehlgeschlagen: ' + (err.response?.data?.error || err.message))
+    } finally { setDeletingId(null) }
+  }
+
   return (
     <div>
+      {lightbox && (
+        <PhotoLightbox
+          url={lightbox.url}
+          onClose={() => setLightbox(null)}
+          onDelete={() => handleDelete(lightbox.id)}
+          deleting={deletingId === lightbox.id}
+        />
+      )}
       <p className="text-xs text-gray-400 mb-1.5">{label} ({photos.length}/{max})</p>
       <div className="flex gap-2 flex-wrap items-center">
         {photos.map(p => (
-          <img key={p.id} src={p.url} className="w-16 h-16 rounded-lg object-cover border border-gray-200" alt="" />
+          <div key={p.id} className="relative group w-16 h-16 cursor-pointer" onClick={() => setLightbox(p)}>
+            <img src={p.url} className="w-16 h-16 rounded-lg object-cover border border-gray-200" alt="" />
+            <div className="absolute inset-0 rounded-lg bg-black/0 group-hover:bg-black/20 transition-colors" />
+          </div>
         ))}
         {photos.length < max && (
           <label className={`w-16 h-16 rounded-lg border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors ${uploading ? 'border-gray-200 bg-gray-50' : 'border-gray-300 hover:border-violet-400 hover:bg-violet-50'}`}>
