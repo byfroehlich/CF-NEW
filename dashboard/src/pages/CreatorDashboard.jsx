@@ -93,7 +93,7 @@ function AuftraegeTab({ week, year }) {
   )
 }
 
-const STATUS_CYCLE = ['idea', 'planned', 'filming', 'done']
+const STATUS_CYCLE = ['idea', 'planned', 'done']
 
 function nextWeekOf(week, year) {
   if (week >= 52) return { week: 1, year: year + 1 }
@@ -101,7 +101,7 @@ function nextWeekOf(week, year) {
 }
 
 // ── Inline-Formular (Neu + Bearbeiten) ──────────────────────
-function PlanForm({ initial, onSave, onCancel, isPending }) {
+function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
   const [f, setF] = useState(initial)
   return (
     <div className="space-y-3">
@@ -134,13 +134,14 @@ function PlanForm({ initial, onSave, onCancel, isPending }) {
         placeholder="Beschreibung…"
       />
       <div className="flex items-center gap-3">
-        <select value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value }))}
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
-          <option value="idea">Idee</option>
-          <option value="planned">Geplant</option>
-          <option value="filming">Am Filmen</option>
-          <option value="done">Fertig</option>
-        </select>
+        {!hideStatus && (
+          <select value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value }))}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
+            <option value="idea">Idee</option>
+            <option value="planned">Geplant</option>
+            <option value="done">Fertig</option>
+          </select>
+        )}
         <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none whitespace-nowrap">
           <input type="checkbox" checked={f.visible_to_agency} onChange={e => setF(x => ({ ...x, visible_to_agency: e.target.checked }))} className="rounded" />
           Agentur sichtbar
@@ -157,45 +158,166 @@ function PlanForm({ initial, onSave, onCancel, isPending }) {
   )
 }
 
+// ── Plan-Karte (wiederverwendet in Wochenplan + Ideen) ───────
+function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, busyId, showWeekBadge }) {
+  const nxt = nextWeekOf(week, year)
+
+  function cycleStatus() {
+    const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(p.status) + 1) % STATUS_CYCLE.length]
+    updateMut.mutate({ id: p.id, status: next })
+  }
+
+  return (
+    <div className={`bg-white rounded-xl border p-4 space-y-3 transition-opacity ${
+      p.status === 'done' ? 'border-green-200 opacity-75' :
+      p.carried_over_from ? 'border-amber-200' :
+      'border-gray-200'
+    }`}>
+      {p.carried_over_from && (
+        <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 -mb-1">
+          <span>↩</span><span className="font-medium">Übertrag aus vorheriger Woche</span>
+        </div>
+      )}
+
+      {editId === p.id ? (
+        <PlanForm
+          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo' }}
+          onSave={f => updateMut.mutate({ id: p.id, ...f })}
+          onCancel={() => setEditId(null)}
+          isPending={updateMut.isPending}
+        />
+      ) : (
+        <>
+          <div className="flex items-start gap-3">
+            <label className="flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer pt-0.5">
+              <span className="text-xs font-bold text-gray-300 leading-none">{idx + 1}</span>
+              <input
+                type="checkbox"
+                checked={p.status === 'done'}
+                disabled={busyId === p.id}
+                onChange={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })}
+                className="w-4 h-4 rounded accent-green-500 cursor-pointer disabled:opacity-50"
+              />
+            </label>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}
+                </span>
+                {showWeekBadge && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-400 font-medium">KW{p.week_number}</span>
+                )}
+                {p.pushed_to_week && (
+                  <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week}</span>
+                )}
+              </div>
+              {p.title && (
+                <p className={`text-sm font-semibold mt-0.5 ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                  {p.title}
+                </p>
+              )}
+              {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>}
+            </div>
+
+            <button
+              onClick={cycleStatus}
+              disabled={busyId === p.id}
+              className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 disabled:opacity-50 ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}
+            >
+              {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : PLAN_STATUS[p.status] || p.status}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between pt-1 border-t border-gray-100 pl-7">
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={p.visible_to_agency}
+                disabled={busyId === p.id}
+                onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
+                className="rounded disabled:opacity-50"
+              />
+              Agentur sichtbar
+            </label>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setEditId(p.id)} disabled={busyId === p.id}
+                className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-40">
+                Bearbeiten
+              </button>
+              {!p.pushed_to_week && (
+                <button
+                  onClick={() => pushMut.mutate(p)}
+                  disabled={pushMut.isPending || busyId === p.id}
+                  className="text-xs text-indigo-500 hover:text-indigo-700 font-medium disabled:opacity-40"
+                >
+                  {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
+                </button>
+              )}
+              <button onClick={() => deleteMut.mutate(p.id)} disabled={busyId === p.id}
+                className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40">
+                {deleteMut.isPending && deleteMut.variables === p.id ? '…' : 'Löschen'}
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Mein Content Tab ─────────────────────────────────────────
 function MeinContentTab({ week, year }) {
   const qc = useQueryClient()
-  const [platform, setPlatform] = useState('Alle')
+  const [subTab, setSubTab]         = useState('woche')  // 'woche' | 'ideen'
+  const [platform, setPlatform]     = useState('Alle')
   const [partnerFilter, setPartnerFilter] = useState('Alle')
-  const [showNew, setShowNew] = useState(false)
-  const [editId, setEditId] = useState(null)
+  const [showNew, setShowNew]       = useState(false)
+  const [editId, setEditId]         = useState(null)
 
-  const EMPTY = { platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false, partner_type: 'solo' }
+  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', status: 'planned', visible_to_agency: false, partner_type: 'solo' }
+  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', status: 'idea',    visible_to_agency: false, partner_type: 'solo' }
 
-  const { data: allPlans = [], isLoading, isError, error } = useQuery({
+  // Wochenplan: aktuelle KW
+  const { data: weekRaw = [], isLoading: weekLoading, isError: weekError, error: weekErr } = useQuery({
     queryKey: ['plans-creator', week, year, platform],
     queryFn: () => getContentPlans({ week, year, ...(platform !== 'Alle' && { platform }) })
   })
 
-  // Solo/Partner Filter lokal anwenden
-  const plans = partnerFilter === 'Alle' ? allPlans
-    : allPlans.filter(p => p.partner_type === partnerFilter.toLowerCase())
+  // Ideenspeicher: alle KWs, nur status='idea'
+  const { data: allRaw = [], isLoading: ideasLoading } = useQuery({
+    queryKey: ['plans-creator-ideas', platform],
+    queryFn: () => getContentPlans({ ...(platform !== 'Alle' && { platform }) })
+  })
 
-  const gesamt   = plans.length
-  const offen    = plans.filter(p => p.status !== 'done').length
-  const erledigt = plans.filter(p => p.status === 'done').length
+  const applyPartner = list => partnerFilter === 'Alle' ? list : list.filter(p => p.partner_type === partnerFilter.toLowerCase())
 
-  const inv = () => qc.invalidateQueries({ queryKey: ['plans-creator'] })
+  const weekPlans  = applyPartner(weekRaw)
+  const ideaPlans  = applyPartner(allRaw.filter(p => p.status === 'idea'))
+
+  const plans      = subTab === 'woche' ? weekPlans : ideaPlans
+  const isLoading  = subTab === 'woche' ? weekLoading : ideasLoading
+
+  const invAll = () => {
+    qc.invalidateQueries({ queryKey: ['plans-creator'] })
+    qc.invalidateQueries({ queryKey: ['plans-creator-ideas'] })
+  }
 
   const createMut = useMutation({
     mutationFn: data => createContentPlan({ ...data, week_number: week, year }),
-    onSuccess: () => { inv(); setShowNew(false) },
+    onSuccess: () => { invAll(); setShowNew(false) },
     onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
-    onSuccess: () => { inv(); setEditId(null) }
+    onSuccess: () => { invAll(); setEditId(null) }
   })
 
   const deleteMut = useMutation({
     mutationFn: id => deleteContentPlan(id),
-    onSuccess: inv
+    onSuccess: invAll
   })
 
   const pushMut = useMutation({
@@ -209,193 +331,109 @@ function MeinContentTab({ week, year }) {
       })
       await updateContentPlan(p.id, { pushed_to_week: nw, pushed_to_year: ny })
     },
-    onSuccess: inv,
+    onSuccess: invAll,
     onError: e => alert('Fehler beim Schieben: ' + (e.response?.data?.error || e.message))
   })
 
-  // Welche Plan-ID gerade in Bearbeitung ist
   const busyId = (updateMut.isPending && updateMut.variables?.id)
     || (deleteMut.isPending && deleteMut.variables)
     || (pushMut.isPending && pushMut.variables?.id)
 
-  function cycleStatus(p) {
-    const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(p.status) + 1) % STATUS_CYCLE.length]
-    updateMut.mutate({ id: p.id, status: next })
-  }
-
-  const nxt = nextWeekOf(week, year)
+  const gesamt   = weekPlans.length
+  const offen    = weekPlans.filter(p => p.status !== 'done').length
+  const erledigt = weekPlans.filter(p => p.status === 'done').length
 
   return (
-    <div className="space-y-5">
-      {/* Stat-Karten */}
+    <div className="space-y-4">
+      {/* Stat-Karten (immer KW-basiert) */}
       <div className="grid grid-cols-3 gap-3">
         <StatCard label="Gesamt"   value={gesamt}   color="gray" />
         <StatCard label="Offen"    value={offen}    color="red" />
         <StatCard label="Erledigt" value={erledigt} color="green" />
       </div>
 
-      {/* Plattform-Filter */}
-      <div className="flex gap-2 flex-wrap">
-        {['Alle', 'IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
-          <button key={p} onClick={() => setPlatform(p)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {p}
-          </button>
-        ))}
-      </div>
-
-      {/* Solo / Partner Filter */}
-      <div className="flex gap-2">
-        {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
-          <button key={val} onClick={() => setPartnerFilter(val)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${partnerFilter === val ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+      {/* Unterreiter */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+        {[['woche',`📅 KW${week}`],['ideen','💡 Ideenspeicher']].map(([val, label]) => (
+          <button key={val} onClick={() => { setSubTab(val); setShowNew(false); setEditId(null) }}
+            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {label}
           </button>
         ))}
       </div>
 
-      {/* Neuer Plan Button / Formular */}
+      {/* Filter */}
+      <div className="flex gap-2 flex-wrap">
+        {['Alle', 'IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
+          <button key={p} onClick={() => setPlatform(p)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {p}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
+          <button key={val} onClick={() => setPartnerFilter(val)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${partnerFilter === val ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Ideenspeicher-Hinweis */}
+      {subTab === 'ideen' && (
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-xs text-indigo-600">
+          💡 Alle Ideen aus allen Wochen — zeitunabhängig speichern, später einplanen.
+        </div>
+      )}
+
+      {/* Neuer Eintrag */}
       {showNew ? (
         <div className="bg-white rounded-xl border border-indigo-200 p-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Neuer Content-Plan</p>
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            {subTab === 'ideen' ? 'Neue Idee' : 'Neuer Plan'}
+          </p>
           <PlanForm
-            initial={EMPTY}
+            initial={subTab === 'ideen' ? EMPTY_IDEA : EMPTY_WEEK}
             onSave={f => createMut.mutate(f)}
             onCancel={() => setShowNew(false)}
             isPending={createMut.isPending}
+            hideStatus={subTab === 'ideen'}
           />
         </div>
       ) : (
-        <button
-          onClick={() => setShowNew(true)}
-          className="w-full py-3 border-2 border-dashed border-indigo-300 rounded-xl text-indigo-500 text-sm font-medium hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
-        >
-          + Neuer Content-Plan
+        <button onClick={() => setShowNew(true)}
+          className="w-full py-3 border-2 border-dashed border-indigo-300 rounded-xl text-indigo-500 text-sm font-medium hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
+          {subTab === 'ideen' ? '+ Neue Idee' : '+ Neuer Content-Plan'}
         </button>
       )}
 
-      {/* Pläne Liste */}
-      {isError ? (
+      {/* Liste */}
+      {weekError && subTab === 'woche' ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-          Fehler: {error?.response?.data?.detail || error?.response?.data?.error || error?.message || 'Unbekannter Fehler'}
+          Fehler: {weekErr?.response?.data?.detail || weekErr?.response?.data?.error || weekErr?.message}
         </div>
       ) : isLoading ? (
         <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>
       ) : plans.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-4xl mb-3">🎬</div>
-          <p className="text-gray-400 text-sm">Keine Pläne für KW{week}</p>
+        <div className="text-center py-10">
+          <div className="text-4xl mb-3">{subTab === 'ideen' ? '💡' : '🎬'}</div>
+          <p className="text-gray-400 text-sm">
+            {subTab === 'ideen' ? 'Noch keine Ideen gespeichert' : `Keine Pläne für KW${week}`}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           {plans.map((p, idx) => (
-            <div key={p.id} className={`bg-white rounded-xl border p-4 space-y-3 transition-opacity ${
-              p.status === 'done' ? 'border-green-200 opacity-75' :
-              p.carried_over_from ? 'border-amber-200' :
-              'border-gray-200'
-            }`}>
-              {/* Übertrag-Banner */}
-              {p.carried_over_from && (
-                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 -mb-1">
-                  <span>↩</span>
-                  <span className="font-medium">Übertrag aus vorheriger Woche</span>
-                </div>
-              )}
-
-              {editId === p.id ? (
-                /* Bearbeitungs-Formular inline */
-                <PlanForm
-                  initial={{ platform: p.platform, title: p.title || '', description: p.description || '', status: p.status, visible_to_agency: p.visible_to_agency }}
-                  onSave={f => updateMut.mutate({ id: p.id, ...f })}
-                  onCancel={() => setEditId(null)}
-                  isPending={updateMut.isPending}
-                />
-              ) : (
-                <>
-                  {/* Kopfzeile */}
-                  <div className="flex items-start gap-3">
-                    {/* Nummer + Checkbox */}
-                    <label className="flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer pt-0.5">
-                      <span className="text-xs font-bold text-gray-300 leading-none">{idx + 1}</span>
-                      <input
-                        type="checkbox"
-                        checked={p.status === 'done'}
-                        disabled={busyId === p.id}
-                        onChange={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'idea' : 'done' })}
-                        className="w-4 h-4 rounded accent-green-500 cursor-pointer disabled:opacity-50"
-                      />
-                    </label>
-
-                    {/* Inhalt */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
-                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
-                          {p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}
-                        </span>
-                        {p.pushed_to_week && (
-                          <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week}</span>
-                        )}
-                      </div>
-                      {p.title && (
-                        <p className={`text-sm font-semibold mt-0.5 ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                          {p.title}
-                        </p>
-                      )}
-                      {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>}
-                    </div>
-
-                    {/* Status-Badge */}
-                    <button
-                      onClick={() => cycleStatus(p)}
-                      disabled={busyId === p.id}
-                      className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 disabled:opacity-50 ${PLAN_COLORS[p.status]}`}
-                    >
-                      {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : PLAN_STATUS[p.status]}
-                    </button>
-                  </div>
-
-                  {/* Aktionszeile */}
-                  <div className="flex items-center justify-between pt-1 border-t border-gray-100 pl-7">
-                    <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={p.visible_to_agency}
-                        disabled={busyId === p.id}
-                        onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
-                        className="rounded disabled:opacity-50"
-                      />
-                      Agentur sichtbar
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => setEditId(p.id)}
-                        disabled={busyId === p.id}
-                        className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-40"
-                      >
-                        Bearbeiten
-                      </button>
-                      {!p.pushed_to_week && (
-                        <button
-                          onClick={() => pushMut.mutate(p)}
-                          disabled={pushMut.isPending || busyId === p.id}
-                          className="text-xs text-indigo-500 hover:text-indigo-700 font-medium disabled:opacity-40"
-                        >
-                          {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
-                        </button>
-                      )}
-                      <button
-                        onClick={() => deleteMut.mutate(p.id)}
-                        disabled={busyId === p.id}
-                        className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40"
-                      >
-                        {deleteMut.isPending && deleteMut.variables === p.id ? '…' : 'Löschen'}
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
+            <PlanCard
+              key={p.id}
+              p={p} idx={idx}
+              week={week} year={year}
+              editId={editId} setEditId={setEditId}
+              updateMut={updateMut} deleteMut={deleteMut} pushMut={pushMut}
+              busyId={busyId}
+              showWeekBadge={subTab === 'ideen'}
+            />
           ))}
         </div>
       )}
@@ -585,6 +623,7 @@ export default function CreatorDashboard() {
     qc.prefetchQuery({ queryKey: ['summary-creator', week, year],    queryFn: () => getJobSummary({ week, year }) })
     qc.prefetchQuery({ queryKey: ['jobs-creator', week, year, 'Alle'], queryFn: () => getJobs({ week, year }) })
     qc.prefetchQuery({ queryKey: ['plans-creator', week, year, 'Alle'], queryFn: () => getContentPlans({ week, year }) })
+    qc.prefetchQuery({ queryKey: ['plans-creator-ideas', 'Alle'],    queryFn: () => getContentPlans({}) })
     qc.prefetchQuery({ queryKey: ['stats-jobs-creator', undefined],  queryFn: () => getJobStats() })
     qc.prefetchQuery({ queryKey: ['stats-plans-creator', undefined], queryFn: () => getContentPlanStats() })
   }, [week, year]) // eslint-disable-line react-hooks/exhaustive-deps
