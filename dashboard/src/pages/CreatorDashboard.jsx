@@ -161,6 +161,8 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
 // ── Plan-Karte (wiederverwendet in Wochenplan + Ideen) ───────
 function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, busyId, showWeekBadge, isIdeaTab }) {
   const nxt = nextWeekOf(week, year)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const busy = busyId === p.id
 
   function cycleStatus() {
     const next = STATUS_CYCLE_WEEK[(STATUS_CYCLE_WEEK.indexOf(p.status) + 1) % STATUS_CYCLE_WEEK.length]
@@ -168,13 +170,13 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
   }
 
   return (
-    <div className={`bg-white rounded-xl border p-4 space-y-3 transition-opacity ${
-      p.status === 'done' ? 'border-green-200 opacity-75' :
-      p.carried_over_from ? 'border-amber-200' :
+    <div className={`bg-white rounded-2xl border p-4 transition-all ${
+      p.status === 'done' ? 'border-green-200 opacity-70' :
+      p.carried_over_from ? 'border-amber-300 bg-amber-50/30' :
       'border-gray-200'
     }`}>
       {p.carried_over_from && (
-        <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 -mb-1">
+        <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 mb-3">
           <span>↩</span><span className="font-medium">Übertrag aus vorheriger Woche</span>
         </div>
       )}
@@ -188,90 +190,127 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
         />
       ) : (
         <>
+          {/* ── Main row ───────────────────────────────── */}
           <div className="flex items-start gap-3">
-            <label className="flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer pt-0.5">
-              <span className="text-xs font-bold text-gray-300 leading-none">{idx + 1}</span>
-              <input
-                type="checkbox"
-                checked={p.status === 'done'}
-                disabled={busyId === p.id || isIdeaTab}
-                onChange={() => !isIdeaTab && updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })}
-                className="w-4 h-4 rounded accent-green-500 cursor-pointer disabled:opacity-50"
-              />
-            </label>
 
+            {/* Big round done-toggle */}
+            <button
+              onClick={() => !isIdeaTab && updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })}
+              disabled={isIdeaTab || busy}
+              className={`flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 active:scale-95
+                ${p.status === 'done'
+                  ? 'bg-green-500 border-green-500 shadow-sm shadow-green-200'
+                  : 'border-gray-300 hover:border-green-400 bg-white'}
+                disabled:opacity-40`}
+            >
+              {p.status === 'done' && (
+                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              )}
+            </button>
+
+            {/* Content */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">{p.platform}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
                   {p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}
                 </span>
                 {showWeekBadge && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-400 font-medium">KW{p.week_number}</span>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-400 font-medium">KW{p.week_number}</span>
                 )}
                 {p.pushed_to_week && (
                   <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week}</span>
                 )}
               </div>
               {p.title && (
-                <p className={`text-sm font-semibold mt-0.5 ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                <p className={`text-sm font-semibold mt-1 ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
                   {p.title}
                 </p>
               )}
-              {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>}
+              {p.description && (
+                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>
+              )}
             </div>
 
-            {!isIdeaTab && (
-              <button
-                onClick={cycleStatus}
-                disabled={busyId === p.id}
-                className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 disabled:opacity-50 ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}
-              >
-                {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : PLAN_STATUS[p.status] || p.status}
-              </button>
-            )}
+            {/* Right: status + actions stacked */}
+            <div className="flex-shrink-0 flex flex-col items-end gap-2">
+              {/* Status badge (cycles on tap) */}
+              {!isIdeaTab && (
+                <button onClick={cycleStatus} disabled={busy}
+                  className={`text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 disabled:opacity-50 transition-opacity ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}>
+                  {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : PLAN_STATUS[p.status] || p.status}
+                </button>
+              )}
+
+              {/* Action icons row */}
+              <div className="flex items-center gap-0.5">
+                {/* Edit */}
+                <button onClick={() => setEditId(p.id)} disabled={busy}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 transition-colors"
+                  title="Bearbeiten">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </button>
+
+                {/* Push / Einplanen */}
+                {isIdeaTab ? (
+                  <button
+                    onClick={() => updateMut.mutate({ id: p.id, status: 'planned', week_number: week, year })}
+                    disabled={busy}
+                    className="text-xs text-violet-600 hover:text-violet-800 font-semibold px-2 py-1 rounded-lg hover:bg-violet-50 disabled:opacity-40 transition-colors whitespace-nowrap">
+                    {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : `→ KW${week}`}
+                  </button>
+                ) : (
+                  !p.pushed_to_week && (
+                    <button onClick={() => pushMut.mutate(p)} disabled={pushMut.isPending || busy}
+                      className="text-xs text-indigo-500 hover:text-indigo-700 font-medium px-2 py-1 rounded-lg hover:bg-indigo-50 disabled:opacity-40 transition-colors whitespace-nowrap">
+                      {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
+                    </button>
+                  )
+                )}
+
+                {/* Delete / Confirm */}
+                {confirmDel ? (
+                  <>
+                    <button onClick={() => { deleteMut.mutate(p.id); setConfirmDel(false) }}
+                      className="text-xs text-white bg-red-500 hover:bg-red-600 font-bold px-2 py-1 rounded-lg transition-colors">
+                      Ja
+                    </button>
+                    <button onClick={() => setConfirmDel(false)}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </>
+                ) : (
+                  <button onClick={() => setConfirmDel(true)} disabled={busy}
+                    className="p-1.5 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                    title="Löschen">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between pt-1 border-t border-gray-100 pl-7">
-            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+          {/* ── Footer: agency toggle ──────────────────── */}
+          <div className="mt-3 pt-2.5 border-t border-gray-100 pl-11">
+            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={p.visible_to_agency}
-                disabled={busyId === p.id}
+                disabled={busy}
                 onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
-                className="rounded disabled:opacity-50"
+                className="rounded disabled:opacity-50 accent-violet-600"
               />
               Agentur sichtbar
             </label>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setEditId(p.id)} disabled={busyId === p.id}
-                className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-40">
-                Bearbeiten
-              </button>
-              {isIdeaTab ? (
-                <button
-                  onClick={() => updateMut.mutate({ id: p.id, status: 'planned', week_number: week, year })}
-                  disabled={busyId === p.id}
-                  className="text-xs text-violet-600 hover:text-violet-800 font-semibold disabled:opacity-40"
-                >
-                  {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : `→ KW${week} einplanen`}
-                </button>
-              ) : (
-                !p.pushed_to_week && (
-                  <button
-                    onClick={() => pushMut.mutate(p)}
-                    disabled={pushMut.isPending || busyId === p.id}
-                    className="text-xs text-indigo-500 hover:text-indigo-700 font-medium disabled:opacity-40"
-                  >
-                    {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
-                  </button>
-                )
-              )}
-              <button onClick={() => deleteMut.mutate(p.id)} disabled={busyId === p.id}
-                className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40">
-                {deleteMut.isPending && deleteMut.variables === p.id ? '…' : 'Löschen'}
-              </button>
-            </div>
           </div>
         </>
       )}
