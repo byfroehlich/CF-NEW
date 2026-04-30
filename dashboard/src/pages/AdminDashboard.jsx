@@ -194,7 +194,7 @@ function AdminCreatorCard({ c, agencies, qc }) {
   const idPhotos     = photos.filter(p => p.type === 'id_document')
 
   return (
-    <div className={`bg-white rounded-xl border p-4 space-y-3 ${needsActivation && c.activation_status !== 'pending' ? 'border-blue-200' : 'border-gray-200'}`}>
+    <div className={`bg-white rounded-xl border p-4 space-y-3 ${needsActivation ? 'border-blue-200' : 'border-gray-200'}`}>
       <div className="flex items-start gap-3">
         <label className="relative cursor-pointer group flex-shrink-0">
           {displayPhoto
@@ -576,7 +576,8 @@ function SystemTab() {
 
   const settingMut = useMutation({
     mutationFn: ({ key, value }) => updateSystemSetting(key, value),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['system-settings'] })
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['system-settings'] }),
+    onError: e => alert('Einstellung konnte nicht gespeichert werden: ' + (e.response?.data?.error || e.message))
   })
 
   return (
@@ -641,10 +642,10 @@ function SystemTab() {
               <p className="text-xs text-gray-400">Wenn aus, können Creator ohne Ausweis-Upload freigeschaltet werden (Testmodus).</p>
             </div>
             <button
-              onClick={() => settingMut.mutate({ key: 'require_id_verification', value: !(settings?.require_id_verification === true) })}
+              onClick={() => settingMut.mutate({ key: 'require_id_verification', value: !settings?.require_id_verification })}
               disabled={settingMut.isPending}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${settings?.require_id_verification ? 'bg-indigo-600' : 'bg-gray-200'}`}>
-              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${settings?.require_id_verification ? 'translate-x-5' : 'translate-x-0'}`} />
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none disabled:opacity-50 ${!!settings?.require_id_verification ? 'bg-indigo-600' : 'bg-gray-200'}`}>
+              <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform duration-200 ${!!settings?.require_id_verification ? 'translate-x-5' : 'translate-x-0'}`} />
             </button>
           </div>
         </div>

@@ -197,7 +197,7 @@ function CreatorCard({ c, changeRequests, qc }) {
   const needsActivation = ['pending','id_uploaded','ai_checked'].includes(c.activation_status)
 
   return (
-    <div className={`bg-white rounded-xl border p-4 space-y-3 ${needsActivation && c.activation_status !== 'pending' ? 'border-blue-200' : 'border-gray-200'}`}>
+    <div className={`bg-white rounded-xl border p-4 space-y-3 ${needsActivation ? 'border-blue-200' : 'border-gray-200'}`}>
       {/* Header */}
       <div className="flex items-start gap-3">
         <label className="relative cursor-pointer group flex-shrink-0">
@@ -251,7 +251,7 @@ function CreatorCard({ c, changeRequests, qc }) {
       </div>
 
       {/* Aktivierungs-Buttons */}
-      {needsActivation && c.activation_status !== 'pending' && !editing && (
+      {needsActivation && !editing && (
         <div className="pt-1">
           {rejectOpen ? (
             <div className="space-y-2">
