@@ -232,7 +232,7 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
       </div>
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 py-2 border border-gray-300 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50">Abbrechen</button>
-        <button onClick={() => onSave(f)} disabled={isPending}
+        <button onClick={() => onSave({ ...f, source_link: f.source_link || null })} disabled={isPending}
           className="flex-1 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
           {isPending ? 'Speichern…' : 'Speichern'}
         </button>
@@ -458,12 +458,14 @@ function MeinContentTab({ week, year }) {
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
-    onSuccess: () => { invAll(); setEditId(null) }
+    onSuccess: () => { invAll(); setEditId(null) },
+    onError: e => alert('Fehler beim Speichern: ' + (e.response?.data?.error || e.message))
   })
 
   const deleteMut = useMutation({
     mutationFn: id => deleteContentPlan(id),
-    onSuccess: invAll
+    onSuccess: invAll,
+    onError: e => alert('Fehler beim Löschen: ' + (e.response?.data?.error || e.message))
   })
 
   const pushMut = useMutation({
@@ -471,7 +473,8 @@ function MeinContentTab({ week, year }) {
       const { week: nw, year: ny } = nextWeekOf(week, year)
       await createContentPlan({
         platform: p.platform, title: p.title, description: p.description,
-        status: 'idea', visible_to_agency: p.visible_to_agency,
+        source_link: p.source_link || null,
+        status: 'planned', visible_to_agency: p.visible_to_agency,
         partner_type: p.partner_type, week_number: nw, year: ny,
         carried_over_from: p.id,
       })
