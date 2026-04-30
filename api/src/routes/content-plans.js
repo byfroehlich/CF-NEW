@@ -30,7 +30,7 @@ router.get('/', requireAnyRole, async (req, res) => {
         SELECT cp.*, c.real_name, c.artist_name
         FROM content_plans cp
         JOIN creators c ON c.id = cp.creator_id
-        WHERE cp.agency_id = ${req.user.agency_id}
+        WHERE cp.agency_id = ${req.user.agency_id ?? null}
           AND cp.visible_to_agency = true
           AND cp.deleted_at IS NULL
           AND (${wk}::int IS NULL OR cp.week_number = ${wk})
@@ -39,9 +39,11 @@ router.get('/', requireAnyRole, async (req, res) => {
         ORDER BY cp.created_at DESC
       `
     } else {
+      const creatorId = req.user.creator_id ?? null
+      if (!creatorId) return res.json([])
       plans = await sql`
         SELECT * FROM content_plans
-        WHERE creator_id = ${req.user.creator_id} AND deleted_at IS NULL
+        WHERE creator_id = ${creatorId}::uuid AND deleted_at IS NULL
           AND (${wk}::int IS NULL OR week_number = ${wk})
           AND (${yr}::int IS NULL OR year = ${yr})
           AND (${pf}::text IS NULL OR platform = ${pf})
@@ -50,7 +52,8 @@ router.get('/', requireAnyRole, async (req, res) => {
     }
     res.json(plans)
   } catch (err) {
-    res.status(500).json({ error: 'Serverfehler' })
+    console.error('Content plans GET error:', err.message, err.stack)
+    res.status(500).json({ error: 'Serverfehler', detail: err.message })
   }
 })
 
