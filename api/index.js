@@ -9,7 +9,8 @@ import agencyRoutes      from './src/routes/agencies.js'
 import creatorRoutes     from './src/routes/creators.js'
 import jobRoutes         from './src/routes/jobs.js'
 import contentPlanRoutes from './src/routes/content-plans.js'
-import logRoutes         from './src/routes/logs.js'
+import logRoutes            from './src/routes/logs.js'
+import changeRequestRoutes  from './src/routes/change-requests.js'
 import sql               from './src/db/client.js'
 
 config()
@@ -46,7 +47,8 @@ app.use('/api/v1/agencies',      agencyRoutes)
 app.use('/api/v1/creators',      creatorRoutes)
 app.use('/api/v1/jobs',          jobRoutes)
 app.use('/api/v1/content-plans', contentPlanRoutes)
-app.use('/api/v1/logs',          logRoutes)
+app.use('/api/v1/logs',           logRoutes)
+app.use('/api/v1/change-requests', changeRequestRoutes)
 
 app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 

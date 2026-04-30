@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getCreators, createCreator, getContentPlans } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getCreators, createCreator, getContentPlans, getChangeRequests, reviewChangeRequest, updateCreatorPhoto } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -101,8 +101,12 @@ function CreatorTab() {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ real_name: '', artist_name: '', contact_email: '', phone: '', birthday: '', platforms: [], notes: '', login_email: '', login_password: '' })
   const [err, setErr] = useState('')
+  const [rejectId, setRejectId] = useState(null)
+  const [rejectNote, setRejectNote] = useState('')
 
   const { data: creators = [] } = useQuery({ queryKey: ['creators-agency'], queryFn: getCreators })
+  const { data: changeRequests = [] } = useQuery({ queryKey: ['change-requests-agency'], queryFn: getChangeRequests })
+  const pendingRequests = changeRequests.filter(r => r.status === 'pending')
 
   const mutation = useMutation({
     mutationFn: createCreator,
@@ -114,6 +118,31 @@ function CreatorTab() {
     onError: e => setErr(e.response?.data?.error || 'Fehler beim Anlegen')
   })
 
+  const reviewMut = useMutation({
+    mutationFn: ({ id, status, note }) => reviewChangeRequest(id, { status, note }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['change-requests-agency'] })
+      qc.invalidateQueries({ queryKey: ['creators-agency'] })
+      setRejectId(null); setRejectNote('')
+    },
+    onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
+  })
+
+  const photoMut = useMutation({
+    mutationFn: ({ id, photo_url }) => updateCreatorPhoto(id, photo_url),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['creators-agency'] }),
+    onError: e => alert('Foto-Upload fehlgeschlagen: ' + (e.response?.data?.error || e.message))
+  })
+
+  async function handlePhotoUpload(creatorId, e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await resizeImage(file, 400)
+      photoMut.mutate({ id: creatorId, photo_url: dataUrl })
+    } catch { alert('Bild konnte nicht verarbeitet werden') }
+  }
+
   function togglePlatform(p) {
     setForm(f => ({ ...f, platforms: f.platforms.includes(p) ? f.platforms.filter(x => x !== p) : [...f.platforms, p] }))
   }
@@ -121,9 +150,69 @@ function CreatorTab() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="font-semibold text-gray-900">Meine Creator <span className="text-gray-400 font-normal text-sm">{creators.length}</span></h2>
+        <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+          Meine Creator <span className="text-gray-400 font-normal text-sm">{creators.length}</span>
+          {pendingRequests.length > 0 && (
+            <span className="bg-amber-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">{pendingRequests.length}</span>
+          )}
+        </h2>
         <button onClick={() => setShowForm(v => !v)} className="px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700">+ Creator onboarden</button>
       </div>
+
+      {/* Offene Änderungsanfragen */}
+      {pendingRequests.length > 0 && (
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Offene Anfragen</p>
+          {pendingRequests.map(r => (
+            <div key={r.id} className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-gray-900">{r.artist_name || r.real_name}</p>
+                <span className="text-xs text-gray-400">{new Date(r.requested_at).toLocaleDateString('de')}</span>
+              </div>
+              <div className="space-y-1.5 mb-3">
+                {Object.entries(r.fields).map(([key, val]) => (
+                  <div key={key} className="text-xs text-gray-600">
+                    <span className="font-medium">{FIELD_LABELS[key] || key}:</span>{' '}
+                    <span className="text-gray-400 line-through">{Array.isArray(val.old) ? val.old.join(', ') : (val.old || '–')}</span>
+                    {' → '}
+                    <span className="text-gray-900 font-medium">{Array.isArray(val.new) ? val.new.join(', ') : (val.new || '–')}</span>
+                  </div>
+                ))}
+              </div>
+              {rejectId === r.id ? (
+                <div className="space-y-2">
+                  <input placeholder="Ablehnungsgrund (optional)" value={rejectNote}
+                    onChange={e => setRejectNote(e.target.value)}
+                    className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-red-400" />
+                  <div className="flex gap-2">
+                    <button onClick={() => reviewMut.mutate({ id: r.id, status: 'rejected', note: rejectNote })}
+                      disabled={reviewMut.isPending}
+                      className="flex-1 py-1.5 bg-red-500 text-white text-xs font-medium rounded-lg hover:bg-red-600 disabled:opacity-50">
+                      Ablehnen bestätigen
+                    </button>
+                    <button onClick={() => { setRejectId(null); setRejectNote('') }}
+                      className="px-3 py-1.5 border border-gray-300 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-50">
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button onClick={() => reviewMut.mutate({ id: r.id, status: 'approved' })}
+                    disabled={reviewMut.isPending}
+                    className="flex-1 py-1.5 bg-green-600 text-white text-xs font-semibold rounded-lg hover:bg-green-700 disabled:opacity-50">
+                    ✓ Genehmigen
+                  </button>
+                  <button onClick={() => setRejectId(r.id)}
+                    className="flex-1 py-1.5 border border-red-300 text-red-600 text-xs font-semibold rounded-lg hover:bg-red-50">
+                    ✕ Ablehnen
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       {showForm && (
         <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
@@ -171,10 +260,20 @@ function CreatorTab() {
           {creators.map(c => (
             <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
               <div className="flex items-center gap-3">
-                {c.photo_url
-                  ? <img src={c.photo_url} className="w-10 h-10 rounded-full object-cover" alt="" />
-                  : <div className="w-10 h-10 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white font-bold text-sm">{(c.real_name || '?')[0]}</div>
-                }
+                {/* Avatar mit Foto-Upload */}
+                <label className="relative cursor-pointer group flex-shrink-0">
+                  {c.photo_url
+                    ? <img src={c.photo_url} className="w-12 h-12 rounded-full object-cover" alt="" />
+                    : <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white font-bold text-base">{(c.real_name || '?')[0]}</div>
+                  }
+                  <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    {photoMut.isPending && photoMut.variables?.id === c.id
+                      ? <span className="text-white text-xs">…</span>
+                      : <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    }
+                  </div>
+                  <input type="file" accept="image/*" className="sr-only" onChange={e => handlePhotoUpload(c.id, e)} />
+                </label>
                 <div>
                   <p className="font-medium text-gray-900 text-sm">{c.real_name}</p>
                   {c.artist_name && <p className="text-xs text-gray-400">{c.artist_name}</p>}
@@ -183,8 +282,11 @@ function CreatorTab() {
               <div className="flex gap-1.5 mt-3 flex-wrap">
                 {c.platforms?.map(p => <PlatformIcon key={p} platform={p} size="badge" />)}
               </div>
-              <div className="mt-2">
+              <div className="mt-2 flex items-center gap-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${c.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{c.active ? 'Aktiv' : 'Inaktiv'}</span>
+                {changeRequests.some(r => r.creator_id === c.id && r.status === 'pending') && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">⏳ Anfrage</span>
+                )}
               </div>
             </div>
           ))}
@@ -196,6 +298,28 @@ function CreatorTab() {
 
 const PLAN_STATUS = { idea: 'Idee', planned: 'Geplant', filming: 'Am Filmen', done: 'Fertig' }
 const PLAN_COLORS = { idea: 'bg-gray-100 text-gray-600', planned: 'bg-blue-100 text-blue-700', filming: 'bg-orange-100 text-orange-700', done: 'bg-green-100 text-green-700' }
+const FIELD_LABELS = { artist_name: 'Künstlername', photo_url: 'Foto', contact_email: 'E-Mail', phone: 'Telefon', platforms: 'Plattformen' }
+
+function resizeImage(file, maxSize = 400) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = reject
+    reader.onload = e => {
+      const img = new Image()
+      img.onerror = reject
+      img.onload = () => {
+        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
 
 function KreativTab({ week, year }) {
   const [platform, setPlatform] = useState('Alle')

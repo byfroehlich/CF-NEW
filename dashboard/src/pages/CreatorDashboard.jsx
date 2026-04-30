@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, updateMyPhoto } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -810,6 +810,227 @@ function StatistikTab({ week, year }) {
   )
 }
 
+// ── Bild-Resize Hilfsfunktion ────────────────────────────────
+function resizeImage(file, maxSize = 400) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = reject
+    reader.onload = e => {
+      const img = new Image()
+      img.onerror = reject
+      img.onload = () => {
+        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1)
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      }
+      img.src = e.target.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
+const FIELD_LABELS = { artist_name: 'Künstlername', photo_url: 'Foto', contact_email: 'E-Mail', phone: 'Telefon', platforms: 'Plattformen' }
+
+// ── Profil Tab ───────────────────────────────────────────────
+function ProfilTab() {
+  const qc = useQueryClient()
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState(null)
+  const [formErr, setFormErr] = useState('')
+  const fileRef = useState(null)
+
+  const { data: profile, isLoading } = useQuery({ queryKey: ['my-profile'], queryFn: getMyProfile })
+  const { data: requests = [] } = useQuery({ queryKey: ['change-requests-creator'], queryFn: getChangeRequests })
+
+  const hasPending = requests.some(r => r.status === 'pending')
+
+  const photoMut = useMutation({
+    mutationFn: updateMyPhoto,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['my-profile'] }),
+    onError: e => alert('Foto-Upload fehlgeschlagen: ' + (e.response?.data?.error || e.message))
+  })
+
+  const requestMut = useMutation({
+    mutationFn: createChangeRequest,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['change-requests-creator'] }); setShowForm(false) },
+    onError: e => setFormErr(e.response?.data?.error || 'Fehler beim Senden')
+  })
+
+  async function handlePhotoUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    try {
+      const dataUrl = await resizeImage(file, 400)
+      photoMut.mutate(dataUrl)
+    } catch {
+      alert('Bild konnte nicht verarbeitet werden')
+    }
+  }
+
+  function openForm() {
+    if (!profile) return
+    setForm({ artist_name: profile.artist_name || '', contact_email: profile.contact_email || '', phone: profile.phone || '', platforms: [...(profile.platforms || [])] })
+    setFormErr('')
+    setShowForm(true)
+  }
+
+  function submitRequest() {
+    if (!form || !profile) return
+    const fields = {}
+    for (const key of ['artist_name', 'contact_email', 'phone']) {
+      const newVal = form[key]
+      const oldVal = profile[key] || ''
+      if (newVal !== oldVal) fields[key] = { old: oldVal, new: newVal }
+    }
+    const oldPl = [...(profile.platforms || [])].sort().join(',')
+    const newPl = [...form.platforms].sort().join(',')
+    if (oldPl !== newPl) fields.platforms = { old: profile.platforms || [], new: form.platforms }
+    if (Object.keys(fields).length === 0) { setFormErr('Keine Änderungen erkannt'); return }
+    requestMut.mutate({ fields })
+  }
+
+  if (isLoading) return <p className="text-center text-gray-400 text-sm py-12">Lädt…</p>
+  if (!profile) return <p className="text-center text-gray-400 text-sm py-12">Profil nicht gefunden</p>
+
+  return (
+    <div className="space-y-4">
+      {/* Profil-Karte */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-5">
+        {/* Avatar + Upload */}
+        <div className="flex items-center gap-4 mb-5">
+          <label className="relative cursor-pointer group flex-shrink-0">
+            {profile.photo_url
+              ? <img src={profile.photo_url} className="w-20 h-20 rounded-full object-cover" alt="" />
+              : <div className="w-20 h-20 rounded-full bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white font-bold text-2xl">
+                  {(profile.artist_name || '?')[0].toUpperCase()}
+                </div>
+            }
+            <div className="absolute inset-0 rounded-full bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+              {photoMut.isPending
+                ? <span className="text-white text-xs">…</span>
+                : <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+              }
+            </div>
+            <input type="file" accept="image/*" className="sr-only" onChange={handlePhotoUpload} disabled={photoMut.isPending} />
+          </label>
+          <div>
+            <p className="font-bold text-gray-900 text-xl leading-tight">{profile.artist_name || '(kein Künstlername)'}</p>
+            <div className="flex gap-1.5 mt-2 flex-wrap">
+              {profile.platforms?.map(p => <PlatformIcon key={p} platform={p} size="badge" />)}
+            </div>
+          </div>
+        </div>
+
+        {/* Felder */}
+        <div className="space-y-2 border-t border-gray-100 pt-4 text-sm">
+          {profile.contact_email && (
+            <div className="flex items-center gap-3 text-gray-600">
+              <span className="text-gray-400 text-xs w-16 flex-shrink-0">E-Mail</span>
+              <span>{profile.contact_email}</span>
+            </div>
+          )}
+          {profile.phone && (
+            <div className="flex items-center gap-3 text-gray-600">
+              <span className="text-gray-400 text-xs w-16 flex-shrink-0">Telefon</span>
+              <span>{profile.phone}</span>
+            </div>
+          )}
+          {!profile.contact_email && !profile.phone && (
+            <p className="text-xs text-gray-400">Noch keine Kontaktdaten hinterlegt</p>
+          )}
+        </div>
+
+        {/* Änderung beantragen */}
+        <div className="mt-4 pt-4 border-t border-gray-100">
+          {hasPending ? (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 text-xs text-amber-700">
+              ⏳ Änderungsanfrage wird geprüft
+            </div>
+          ) : (
+            <button onClick={openForm}
+              className="w-full py-2.5 border-2 border-dashed border-violet-300 rounded-xl text-violet-600 text-sm font-medium hover:bg-violet-50 transition-colors">
+              ✏️ Änderung beantragen
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Änderungsformular */}
+      {showForm && (
+        <div className="bg-white rounded-2xl border border-indigo-200 p-5 space-y-4">
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">Änderung beantragen</p>
+            <p className="text-xs text-gray-400 mt-0.5">Nur geänderte Felder werden eingereicht.</p>
+          </div>
+          <div className="space-y-3">
+            {[['artist_name','Künstlername','text'],['contact_email','E-Mail','email'],['phone','Telefon','tel']].map(([key, label, type]) => (
+              <div key={key}>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">{label}</label>
+                <input type={type} value={form[key]}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+              </div>
+            ))}
+            <div>
+              <label className="text-xs font-medium text-gray-500 mb-2 block">Plattformen</label>
+              <div className="flex gap-2 flex-wrap">
+                {['IG','TK','OF','FL','ML'].map(p => (
+                  <PlatformIcon key={p} platform={p} size="sm" active={form.platforms.includes(p)}
+                    onClick={() => setForm(f => ({ ...f, platforms: f.platforms.includes(p) ? f.platforms.filter(x => x !== p) : [...f.platforms, p] }))} />
+                ))}
+              </div>
+            </div>
+          </div>
+          {formErr && <p className="text-xs text-red-600">{formErr}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => { setShowForm(false); setFormErr('') }}
+              className="flex-1 py-2.5 border border-gray-200 text-gray-600 text-sm font-medium rounded-xl hover:bg-gray-50">
+              Abbrechen
+            </button>
+            <button onClick={submitRequest} disabled={requestMut.isPending}
+              className="flex-1 py-2.5 bg-violet-600 text-white text-sm font-medium rounded-xl hover:bg-violet-700 disabled:opacity-50">
+              {requestMut.isPending ? 'Wird gesendet…' : 'Anfrage senden'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Anfrage-Verlauf */}
+      {requests.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Anfragen</p>
+          {requests.map(r => (
+            <div key={r.id} className={`bg-white rounded-xl border p-4 ${r.status === 'pending' ? 'border-amber-200' : r.status === 'approved' ? 'border-green-200' : 'border-red-200'}`}>
+              <div className="flex items-center justify-between mb-2">
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.status === 'pending' ? 'bg-amber-100 text-amber-700' : r.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  {r.status === 'pending' ? '⏳ Ausstehend' : r.status === 'approved' ? '✅ Genehmigt' : '❌ Abgelehnt'}
+                </span>
+                <span className="text-xs text-gray-400">{new Date(r.requested_at).toLocaleDateString('de')}</span>
+              </div>
+              <div className="space-y-1">
+                {Object.entries(r.fields).map(([key, val]) => (
+                  <div key={key} className="text-xs text-gray-600">
+                    <span className="font-medium text-gray-700">{FIELD_LABELS[key] || key}:</span>{' '}
+                    <span className="text-gray-400 line-through">{Array.isArray(val.old) ? val.old.join(', ') : (val.old || '–')}</span>
+                    {' → '}
+                    <span className="text-gray-900 font-medium">{Array.isArray(val.new) ? val.new.join(', ') : (val.new || '–')}</span>
+                  </div>
+                ))}
+              </div>
+              {r.note && r.status === 'rejected' && (
+                <p className="text-xs text-red-600 mt-2 italic">Grund: {r.note}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Hauptkomponente ──────────────────────────────────────────
 export default function CreatorDashboard() {
   const navigate = useNavigate()
@@ -856,7 +1077,7 @@ export default function CreatorDashboard() {
         </div>
         {/* Pill-Tabs */}
         <div className="max-w-2xl mx-auto mt-4 flex gap-2">
-          {['Aufträge','Mein Content','Statistik'].map(t => (
+          {['Aufträge','Mein Content','Profil','Statistik'].map(t => (
             <button key={t} onClick={() => setActiveTab(t)}
               className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
               {t}
@@ -868,6 +1089,7 @@ export default function CreatorDashboard() {
       <div className="max-w-2xl mx-auto px-6 py-6">
         {activeTab === 'Aufträge'    && <AuftraegeTab week={week} year={year} />}
         {activeTab === 'Mein Content' && <MeinContentTab week={week} year={year} />}
+        {activeTab === 'Profil'      && <ProfilTab />}
         {activeTab === 'Statistik'   && <StatistikTab week={week} year={year} />}
       </div>
     </div>
