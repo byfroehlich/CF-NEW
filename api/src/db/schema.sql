@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS content_plans (
   platform          TEXT NOT NULL CHECK (platform IN ('IG','TK','OF','FL','ML','OTHER')),
   title             TEXT,
   description       TEXT,
+  source_link       TEXT,
   status            TEXT DEFAULT 'idea' CHECK (status IN ('idea','planned','filming','done')),
   visible_to_agency BOOLEAN DEFAULT false,
   deleted_at        TIMESTAMPTZ,

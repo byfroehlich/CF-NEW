@@ -132,6 +132,12 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
         placeholder="Beschreibung…"
       />
+      <input
+        type="url"
+        value={f.source_link || ''} onChange={e => setF(x => ({ ...x, source_link: e.target.value || null }))}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        placeholder="Beispiel-Link (https://…)"
+      />
       <div className="flex items-center gap-3">
         {!hideStatus && (
           <select value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value }))}
@@ -182,7 +188,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
       {editId === p.id ? (
         <PlanForm
-          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo' }}
+          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo' }}
           onSave={f => updateMut.mutate({ id: p.id, ...f })}
           onCancel={() => setEditId(null)}
           isPending={updateMut.isPending}
@@ -229,7 +235,16 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 </p>
               )}
               {p.description && (
-                <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>
+                <p className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap">{p.description}</p>
+              )}
+              {p.source_link && (
+                <a href={p.source_link} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1 mt-1.5 text-xs text-violet-600 hover:text-violet-800 hover:underline font-medium">
+                  <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  Beispielvideo
+                </a>
               )}
             </div>
 
@@ -325,8 +340,8 @@ function MeinContentTab({ week, year }) {
   const [showNew, setShowNew]       = useState(false)
   const [editId, setEditId]         = useState(null)
 
-  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', status: 'planned', visible_to_agency: false, partner_type: 'solo' }
-  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo' }
+  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo' }
+  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo' }
 
   // Wochenplan: aktuelle KW
   const { data: weekRaw = [], isLoading: weekLoading, isError: weekError, error: weekErr } = useQuery({

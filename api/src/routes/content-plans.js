@@ -167,10 +167,10 @@ router.post('/', requireAnyRole, validate(contentPlanSchema), async (req, res) =
       return res.status(400).json({ error: 'Kein Creator-Account verknüpft' })
     }
 
-    const { week_number, year, platform, title, description, status, visible_to_agency, partner_type, carried_over_from } = req.body
+    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from } = req.body
     const [plan] = await sql`
-      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, status, visible_to_agency, partner_type, carried_over_from)
-      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null})
+      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from)
+      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null})
       RETURNING *
     `
     res.status(201).json(plan)
@@ -199,6 +199,7 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
       UPDATE content_plans SET
         title             = COALESCE(${f.title ?? null}, title),
         description       = COALESCE(${f.description ?? null}, description),
+        source_link       = COALESCE(${f.source_link ?? null}, source_link),
         status            = COALESCE(${f.status ?? null}, status),
         visible_to_agency = COALESCE(${f.visible_to_agency ?? null}, visible_to_agency),
         platform          = COALESCE(${f.platform ?? null}, platform),
