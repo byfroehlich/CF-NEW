@@ -24,7 +24,7 @@ const PLAN_COLORS = { idea:'bg-gray-100 text-gray-600', planned:'bg-blue-100 tex
 // ── Gradient Header ─────────────────────────────────────────
 function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
   return (
-    <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 py-4 sticky top-0 z-10">
+    <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
       <div className="flex items-center justify-between max-w-2xl mx-auto">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
@@ -651,7 +651,7 @@ export default function CreatorDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header mit eingebetteten Tab-Buttons */}
-      <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 py-4 sticky top-0 z-10">
+      <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
         <div className="flex items-center justify-between max-w-2xl mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">

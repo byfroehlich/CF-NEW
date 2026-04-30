@@ -20,7 +20,7 @@ const TABS = ['Aufträge', 'Creator', 'Kreativ', 'Statistik']
 
 function AgencyHeader({ tab, week, year, onWeekChange, onLogout }) {
   return (
-    <div className="bg-gray-900 text-white px-6 py-4 sticky top-0 z-10">
+    <div className="bg-gray-900 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
       <div className="flex items-center justify-between max-w-6xl mx-auto">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center flex-shrink-0">
