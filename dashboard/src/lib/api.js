@@ -54,6 +54,28 @@ export const getCreator = id => api.get(`/api/v1/creators/${id}`).then(r => r.da
 export const getMyProfile = () => api.get('/api/v1/creators/me').then(r => r.data)
 export const createCreator = data => api.post('/api/v1/creators', data).then(r => r.data)
 export const updateCreator = (id, data) => api.patch(`/api/v1/creators/${id}`, data).then(r => r.data)
+export const activateCreator = id => api.patch(`/api/v1/creators/${id}/activate`).then(r => r.data)
+export const rejectCreator = (id, reason) => api.patch(`/api/v1/creators/${id}/reject`, { reason }).then(r => r.data)
+export const getPendingCreators = () => api.get('/api/v1/creators/pending-activation').then(r => r.data)
+
+// Creator Photos
+export const getCreatorPhotos = creatorId =>
+  api.get(`/api/v1/creators/${creatorId}/photos`).then(r => r.data)
+export const addCreatorPhoto = (creatorId, data) =>
+  api.post(`/api/v1/creators/${creatorId}/photos`, data).then(r => r.data)
+export const deleteCreatorPhoto = (creatorId, photoId) =>
+  api.delete(`/api/v1/creators/${creatorId}/photos/${photoId}`).then(r => r.data)
+export const updateCreatorPhotoMeta = (creatorId, photoId, data) =>
+  api.patch(`/api/v1/creators/${creatorId}/photos/${photoId}`, data).then(r => r.data)
+
+// File Upload (multipart)
+export const uploadFile = (file, type = 'photo') => {
+  const form = new FormData()
+  form.append('file', file)
+  return api.post(`/api/v1/upload?type=${type}`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }).then(r => r.data)
+}
 
 // Agencies
 export const getAgencies = () => api.get('/api/v1/agencies').then(r => r.data)
@@ -73,10 +95,13 @@ export const getLogs = params => api.get('/api/v1/logs', { params }).then(r => r
 export const getLogSummary = () => api.get('/api/v1/logs/summary').then(r => r.data)
 
 // Change Requests
-export const getChangeRequests  = ()         => api.get('/api/v1/change-requests').then(r => r.data)
-export const createChangeRequest = data      => api.post('/api/v1/change-requests', data).then(r => r.data)
-export const reviewChangeRequest = (id, data) => api.patch(`/api/v1/change-requests/${id}`, data).then(r => r.data)
-export const updateMyPhoto = photo_url       => api.patch('/api/v1/creators/me/photo', { photo_url }).then(r => r.data)
-export const updateCreatorPhoto = (id, photo_url) => api.patch(`/api/v1/creators/${id}`, { photo_url }).then(r => r.data)
+export const getChangeRequests   = ()          => api.get('/api/v1/change-requests').then(r => r.data)
+export const createChangeRequest = data        => api.post('/api/v1/change-requests', data).then(r => r.data)
+export const reviewChangeRequest = (id, data)  => api.patch(`/api/v1/change-requests/${id}`, data).then(r => r.data)
+export const updateMyPhoto = photo_url         => api.patch('/api/v1/creators/me/photo', { photo_url }).then(r => r.data)
+
+// System Settings
+export const getSystemSettings    = ()            => api.get('/api/v1/system/settings').then(r => r.data)
+export const updateSystemSetting  = (key, value)  => api.patch(`/api/v1/system/settings/${key}`, { value }).then(r => r.data)
 
 export default api
