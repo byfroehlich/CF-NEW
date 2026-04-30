@@ -210,7 +210,7 @@ CREATE TABLE refresh_tokens (
 CREATE INDEX idx_refresh_tokens_user ON refresh_tokens(user_id) WHERE revoked = false;
 ```
 
-### Tabelle: `content_plans` *(Neu — Mein Content für Creator)*
+### Tabelle: `content_plans`
 
 ```sql
 CREATE TABLE content_plans (
@@ -224,9 +224,25 @@ CREATE TABLE content_plans (
   description        TEXT,
   status             TEXT DEFAULT 'idea' CHECK (status IN ('idea','planned','filming','done')),
   visible_to_agency  BOOLEAN DEFAULT false,  -- Creator gibt Plan für Agentur-Kreativ-Tab frei
+  partner_type       TEXT DEFAULT 'solo' CHECK (partner_type IN ('solo','partner')),
+  carried_over_from  UUID REFERENCES content_plans(id),  -- gesetzt wenn Übertrag aus Vorwoche
+  pushed_to_week     INT,   -- gesetzt auf Original wenn in nächste Woche geschoben
+  pushed_to_year     INT,
   deleted_at         TIMESTAMPTZ,
   created_at         TIMESTAMPTZ DEFAULT now()
 );
+```
+
+**DB-Migrationen (bereits auf Neon ausgeführt):**
+```sql
+ALTER TABLE content_plans
+  ADD COLUMN IF NOT EXISTS carried_over_from UUID REFERENCES content_plans(id),
+  ADD COLUMN IF NOT EXISTS pushed_to_week INT,
+  ADD COLUMN IF NOT EXISTS pushed_to_year INT;
+
+ALTER TABLE content_plans
+  ADD COLUMN IF NOT EXISTS partner_type TEXT DEFAULT 'solo'
+    CHECK (partner_type IN ('solo', 'partner'));
 ```
 
 ### Tabelle: `logs`
@@ -287,16 +303,19 @@ CREATE TABLE logs (
 | POST | `/` | admin, agency | Neuen Job anlegen |
 | PATCH | `/:id/status` | admin, agency, bot | Status ändern |
 | DELETE | `/:id` | admin | Soft delete |
-| GET | `/summary` | admin, agency, creator | Statistik-Zusammenfassung (creator: nur eigene) |
+| GET | `/summary` | admin, agency, creator | Wochenstatistik (creator: nur eigene) |
+| GET | `/stats` | admin, agency, creator | Zeitraum-Statistik: Monat/Quartal/Halbjahr/Jahr + Plattform-Verteilung + Monatsverlauf |
 
 ### Content Plans (`/api/v1/content-plans`)
 
 | Method | Path | Rolle | Beschreibung |
 |---|---|---|---|
-| GET | `/` | creator (eigene), agency (eigene), admin (alle) | Pläne nach KW |
+| GET | `/` | creator (eigene), agency (eigene), admin (alle) | Pläne nach KW, Query-Params: week, year, platform |
 | POST | `/` | creator, agency, admin | Neuen Plan anlegen |
-| PATCH | `/:id` | creator (eigene), agency, admin | Plan bearbeiten |
+| PATCH | `/:id` | creator (eigene), agency, admin | Plan bearbeiten (COALESCE-Update) |
 | DELETE | `/:id` | creator (eigene), agency, admin | Soft delete |
+
+**Schieben-Logik:** `POST` erstellt Kopie mit `carried_over_from: original.id`; gleichzeitig `PATCH` auf Original setzt `pushed_to_week/year`. Beide Richtungen sichtbar: Original zeigt „→ KW{n}", Kopie zeigt Amber-Badge „↩ Übertrag".
 
 ### Logs (`/api/v1/logs`)
 
@@ -325,7 +344,8 @@ CREATE TABLE logs (
 
 ### Creator-Dashboard
 - **Aufträge** — nur eigene Jobs, Filter: KW / Plattform
-- **Mein Content** — eigene Content-Pläne anlegen/bearbeiten, Filter: KW / Plattform
+- **Mein Content** — Content-Pläne anlegen/bearbeiten/löschen; Filter: KW / Plattform / Solo-Partner; Stat-Karten (Gesamt/Offen/Erledigt); nummerierte Liste; Checkbox zum Abhaken; Inline-Edit; Schieben → nächste KW mit Übertrag-Badge; Agentur-Sichtbarkeit-Toggle
+- **Statistik** — Wochenübersicht (Jobs der aktuellen KW) + Zeitraum-Karten (Monat/Quartal/Halbjahr/Jahr) + Plattform-Balken + Monatsverlauf; aktuell nur Aufträge (Jobs) — Eigener Content fehlt noch (→ TODO)
 
 ---
 
@@ -469,9 +489,10 @@ Jede Rolle hat ein **visuell eigenständiges Design**. Creator-UI ist warm und k
 
 ### Agentur-Dashboard
 
-Noch nicht in Screenshots zu sehen — Design analog zu Admin (dunkler Header), aber:
+Design analog zu Admin (dunkler Header `bg-gray-900`):
 - Header-Subtitle: `AGENTUR · [Agenturname]`
 - Tabs: `Aufträge | Creator | Kreativ | Statistik` (kein Nutzer, kein System)
+- **Kreativ-Tab:** zeigt `visible_to_agency = true` Pläne der eigenen Creator; Amber-Badge für Überträge (`carried_over_from` gesetzt); „→ KW{n} geschoben" Badge für weitergeschobene Pläne
 - Statistik-Karten: wie Admin (5 Stück mit farbigen Linien)
 
 ---
@@ -506,22 +527,29 @@ Persistente Leiste am unteren Rand — dient zum schnellen Rollen-Wechsel währe
 ## Implementierungsreihenfolge
 
 ### Phase 1 — Grundsystem (aktuell)
-- [ ] DB-Schema Migration (neues Schema ausführen auf Neon)
-- [ ] API: `POST /api/v1/agencies` (Transaktion)
-- [ ] API: `POST /api/v1/creators` (Transaktion)
-- [ ] API: `GET/PATCH /api/v1/agencies/:id`
-- [ ] API: `GET/PATCH /api/v1/creators/:id`
-- [ ] API: `GET /api/v1/content-plans` + `POST` + `PATCH` + `DELETE`
-- [ ] Dashboard: Admin-Login funktionsfähig
-- [ ] Dashboard: Admin — Agentur-Tab (Liste + Anlegen + Detail)
-- [ ] Dashboard: Admin — Creator-Tab (Liste + Anlegen-Formular aus Screenshot)
-- [ ] Dashboard: Admin — Nutzer-Tab (Liste)
-- [ ] Dashboard: Creator-Login funktionsfähig
-- [ ] Dashboard: Creator — Aufträge-Tab
-- [ ] Dashboard: Creator — Mein Content-Tab
+- [x] DB-Schema Migration (auf Neon ausgeführt, inkl. alle nachträglichen ALTER TABLE)
+- [x] API: `POST /api/v1/agencies` (Transaktion)
+- [x] API: `POST /api/v1/creators` (Transaktion)
+- [x] API: `GET/PATCH /api/v1/agencies/:id`
+- [x] API: `GET/PATCH /api/v1/creators/:id`
+- [x] API: `GET/POST/PATCH/DELETE /api/v1/content-plans`
+- [x] API: `GET /api/v1/jobs/stats` (Zeitraum-Statistik)
+- [x] Dashboard: Admin-Login funktionsfähig
+- [x] Dashboard: Admin — Agentur-Tab (Liste + Anlegen + Detail)
+- [x] Dashboard: Admin — Creator-Tab (Liste + Anlegen-Formular)
+- [x] Dashboard: Admin — Nutzer-Tab (Liste)
+- [x] Dashboard: Creator-Login funktionsfähig
+- [x] Dashboard: Creator — Aufträge-Tab
+- [x] Dashboard: Creator — Mein Content-Tab (vollständig inkl. Schieben, Inline-Edit, Solo/Partner)
+- [x] Dashboard: Creator — Statistik-Tab (Wochenübersicht + Zeitraum-Karten + Balken)
+- [x] Dashboard: Agentur-Login + Agentur-Dashboard (Aufträge / Creator / Kreativ / Statistik)
+
+### Nächste Session (Priorität)
+- [ ] **Statistik: Eigener Content** — `GET /api/v1/content-plans/stats` Endpoint + `getContentPlanStats` in api.js + Toggle „Aufträge / Eigener Content" im Creator StatistikTab
+- [ ] **PWA** — `vite-plugin-pwa` + Web App Manifest (CF-Icons) + Service Worker (NetworkFirst für offline Jobs/Pläne) + mobile-first Layout-Optimierungen Creator-Dashboard
 
 ### Phase 2
-- [ ] Agentur-Login + Agentur-Dashboard vollständig
+- [ ] Agentur-Login + Agentur-Dashboard vollständig (Statistik-Tab ausbauen)
 - [ ] Bot-Integration für Creator (Telegram Chat ID verknüpfen)
 - [ ] Webhook statt Polling
 
@@ -590,12 +618,14 @@ await sql.begin(async sql => {
 |---|---|
 | Node.js ESM überall | kein CJS/ESM-Mix |
 | postgres.js statt ORM | direktes SQL, volle Query-Kontrolle |
+| postgres.js `prepare: false` | verhindert „cached plan must not change result type" nach ALTER TABLE; ohne prepared statements kein Schema-Cache-Problem bei Migrations |
 | Zod auf allen Routes | kein unvalidierter Input erreicht die DB |
 | Soft Delete | regulatorisch + Audit-Trail |
 | Render | bestehender Account, EU-Hosting |
 | Neon Frankfurt | DSGVO für sensible Datenkategorie |
 | API `/api/v1/` | Breaking Changes ohne Dashboard-Ausfall |
 | Transaktion bei Creator/Agentur-Anlegen | atomare Operation, kein inkonsistenter State |
+| TanStack Query v5 | `invalidateQueries({ queryKey: [...] })` — NICHT v4-Array-Syntax `invalidateQueries([...])` |
 
 ---
 
@@ -607,5 +637,5 @@ await sql.begin(async sql => {
 
 ---
 
-*Zuletzt aktualisiert: 2026-04-29 — nach kritischer Review aller Schichten*  
+*Zuletzt aktualisiert: 2026-04-30 — Phase 1 Grundsystem abgeschlossen, Statistik + PWA als nächstes*  
 *Alle Änderungen müssen hier dokumentiert werden.*

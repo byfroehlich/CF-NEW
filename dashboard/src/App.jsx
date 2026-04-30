@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './lib/ProtectedRoute.jsx'
 import Login from './pages/Login.jsx'
 import AdminDashboard from './pages/AdminDashboard.jsx'
+import AgencyDashboard from './pages/AgencyDashboard.jsx'
 import CreatorDashboard from './pages/CreatorDashboard.jsx'
 import { roleHome, getToken } from './lib/auth.js'
 
@@ -19,6 +20,11 @@ export default function App() {
         <Route path="/admin/*" element={
           <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
+          </ProtectedRoute>
+        } />
+        <Route path="/agentur/*" element={
+          <ProtectedRoute allowedRoles={['agency']}>
+            <AgencyDashboard />
           </ProtectedRoute>
         } />
         <Route path="/creator/*" element={

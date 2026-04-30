@@ -5,6 +5,106 @@ import { validate, contentPlanSchema, contentPlanUpdateSchema } from '../validat
 
 const router = Router()
 
+// GET /api/v1/content-plans/stats
+router.get('/stats', requireAnyRole, async (req, res) => {
+  const { platform } = req.query
+  const pf = platform && platform !== 'Alle' ? platform : null
+  try {
+    let totals, byPlatform, byMonth
+
+    if (req.user.role === 'creator') {
+      const creatorId = req.user.creator_id ?? null
+      if (!creatorId) return res.json({ month_count: 0, quarter_count: 0, half_count: 0, year_count: 0, by_platform: [], by_month: [] })
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM content_plans
+        WHERE creator_id = ${creatorId}::uuid AND deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count
+        FROM content_plans
+        WHERE creator_id = ${creatorId}::uuid AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM content_plans
+        WHERE creator_id = ${creatorId}::uuid AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    } else if (req.user.role === 'agency') {
+      const agencyId = req.user.agency_id ?? null
+      if (!agencyId) return res.json({ month_count: 0, quarter_count: 0, half_count: 0, year_count: 0, by_platform: [], by_month: [] })
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM content_plans
+        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count
+        FROM content_plans
+        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM content_plans
+        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    } else {
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM content_plans WHERE deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count FROM content_plans
+        WHERE deleted_at IS NULL AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM content_plans WHERE deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    }
+
+    res.json({ ...totals, by_platform: byPlatform, by_month: byMonth })
+  } catch (err) {
+    console.error('Content plan stats error:', err)
+    res.status(500).json({ error: 'Serverfehler', detail: err.message })
+  }
+})
+
 // GET /api/v1/content-plans
 router.get('/', requireAnyRole, async (req, res) => {
   const { week, year, platform } = req.query
@@ -30,7 +130,7 @@ router.get('/', requireAnyRole, async (req, res) => {
         SELECT cp.*, c.real_name, c.artist_name
         FROM content_plans cp
         JOIN creators c ON c.id = cp.creator_id
-        WHERE cp.agency_id = ${req.user.agency_id}
+        WHERE cp.agency_id = ${req.user.agency_id ?? null}
           AND cp.visible_to_agency = true
           AND cp.deleted_at IS NULL
           AND (${wk}::int IS NULL OR cp.week_number = ${wk})
@@ -39,9 +139,11 @@ router.get('/', requireAnyRole, async (req, res) => {
         ORDER BY cp.created_at DESC
       `
     } else {
+      const creatorId = req.user.creator_id ?? null
+      if (!creatorId) return res.json([])
       plans = await sql`
         SELECT * FROM content_plans
-        WHERE creator_id = ${req.user.creator_id} AND deleted_at IS NULL
+        WHERE creator_id = ${creatorId}::uuid AND deleted_at IS NULL
           AND (${wk}::int IS NULL OR week_number = ${wk})
           AND (${yr}::int IS NULL OR year = ${yr})
           AND (${pf}::text IS NULL OR platform = ${pf})
@@ -50,7 +152,8 @@ router.get('/', requireAnyRole, async (req, res) => {
     }
     res.json(plans)
   } catch (err) {
-    res.status(500).json({ error: 'Serverfehler' })
+    console.error('Content plans GET error:', err.message, err.stack)
+    res.status(500).json({ error: 'Serverfehler', detail: err.message })
   }
 })
 
@@ -64,10 +167,10 @@ router.post('/', requireAnyRole, validate(contentPlanSchema), async (req, res) =
       return res.status(400).json({ error: 'Kein Creator-Account verknüpft' })
     }
 
-    const { week_number, year, platform, title, description, status, visible_to_agency } = req.body
+    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from } = req.body
     const [plan] = await sql`
-      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, status, visible_to_agency)
-      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${status}, ${visible_to_agency})
+      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from)
+      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null})
       RETURNING *
     `
     res.status(201).json(plan)
@@ -96,9 +199,15 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
       UPDATE content_plans SET
         title             = COALESCE(${f.title ?? null}, title),
         description       = COALESCE(${f.description ?? null}, description),
+        source_link       = COALESCE(${f.source_link ?? null}, source_link),
         status            = COALESCE(${f.status ?? null}, status),
         visible_to_agency = COALESCE(${f.visible_to_agency ?? null}, visible_to_agency),
-        platform          = COALESCE(${f.platform ?? null}, platform)
+        platform          = COALESCE(${f.platform ?? null}, platform),
+        partner_type      = COALESCE(${f.partner_type ?? null}, partner_type),
+        week_number       = COALESCE(${f.week_number ?? null}, week_number),
+        year              = COALESCE(${f.year ?? null}, year),
+        pushed_to_week    = COALESCE(${f.pushed_to_week ?? null}, pushed_to_week),
+        pushed_to_year    = COALESCE(${f.pushed_to_year ?? null}, pushed_to_year)
       WHERE id = ${id}
       RETURNING *
     `

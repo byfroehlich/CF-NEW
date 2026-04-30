@@ -5,6 +5,7 @@ import { logout, getJobs, getJobSummary, getCreators, getAgencies, createCreator
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
+import PlatformIcon from '../components/PlatformIcon.jsx'
 import WeekNav from '../components/WeekNav.jsx'
 
 function getCurrentWeek() {
@@ -21,7 +22,7 @@ const TABS = ['Aufträge', 'Creator', 'Agentur', 'Statistik', 'Nutzer', 'System'
 // ── Logo Header ──────────────────────────────────────────────
 function AdminHeader({ tab, week, year, onWeekChange, onLogout }) {
   return (
-    <div className="bg-gray-900 text-white px-6 py-4 sticky top-0 z-10">
+    <div className="bg-gray-900 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
       <div className="flex items-center justify-between max-w-6xl mx-auto">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center flex-shrink-0">
@@ -71,7 +72,7 @@ function AuftraegeTab({ week, year }) {
             <div key={j.id} className="px-4 py-3 flex items-center justify-between text-sm">
               <div>
                 <span className="font-medium text-gray-900">{j.artist_name || j.real_name}</span>
-                <span className="text-gray-400 ml-2">{j.platform}</span>
+                <PlatformIcon platform={j.platform} size="badge" className="ml-2" />
                 {j.agency_name && <span className="text-gray-400 ml-2 text-xs">· {j.agency_name}</span>}
               </div>
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${
@@ -101,7 +102,7 @@ function CreatorTab() {
 
   const mutation = useMutation({
     mutationFn: createCreator,
-    onSuccess: () => { qc.invalidateQueries(['creators-admin']); setShowForm(false); setForm({ real_name:'',artist_name:'',contact_email:'',phone:'',birthday:'',platforms:[],notes:'',agency_id:'',login_email:'',login_password:'' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['creators-admin'] }); setShowForm(false); setForm({ real_name:'',artist_name:'',contact_email:'',phone:'',birthday:'',platforms:[],notes:'',agency_id:'',login_email:'',login_password:'' }) },
     onError: e => setErr(e.response?.data?.error || 'Fehler beim Anlegen')
   })
 
@@ -141,10 +142,8 @@ function CreatorTab() {
             <label className="block text-sm font-medium text-gray-700 mb-2">Plattformen *</label>
             <div className="flex gap-2 flex-wrap">
               {PLATFORMS_MULTI().map(p => (
-                <button key={p} type="button" onClick={() => togglePlatform(p)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.platforms.includes(p) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                  {p}
-                </button>
+                <PlatformIcon key={p} platform={p} size="sm" active={form.platforms.includes(p)}
+                  onClick={() => togglePlatform(p)} />
               ))}
             </div>
           </div>
@@ -180,8 +179,8 @@ function CreatorTab() {
                   {c.artist_name && <p className="text-xs text-gray-400">{c.artist_name}</p>}
                 </div>
               </div>
-              <div className="flex gap-1 mt-3 flex-wrap">
-                {c.platforms?.map(p => <span key={p} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{p}</span>)}
+              <div className="flex gap-1.5 mt-3 flex-wrap">
+                {c.platforms?.map(p => <PlatformIcon key={p} platform={p} size="badge" />)}
               </div>
               <div className="mt-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${c.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{c.active ? 'Aktiv' : 'Inaktiv'}</span>
@@ -204,7 +203,7 @@ function AgenturTab() {
   const { data: agencies = [] } = useQuery({ queryKey: ['agencies-admin'], queryFn: getAgencies })
   const mutation = useMutation({
     mutationFn: createAgency,
-    onSuccess: () => { qc.invalidateQueries(['agencies-admin']); setShowForm(false) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agencies-admin'] }); setShowForm(false) },
     onError: e => setErr(e.response?.data?.error || 'Fehler beim Anlegen')
   })
 
