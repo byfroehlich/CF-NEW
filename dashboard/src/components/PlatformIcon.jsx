@@ -25,23 +25,51 @@ const CFG = {
   OF: {
     label: 'OnlyFans',
     bg: 'bg-[#00AFF0]',
-    text: 'OF',
-    textClass: 'font-black text-white tracking-tight',
+    // Circle ring (O) + curved wing (F) — white on blue
+    icon: (s) => (
+      <svg width={s} height={s} viewBox="0 0 100 100" fill="white">
+        {/* O: ring via evenodd donut */}
+        <path fillRule="evenodd" d="
+          M38,14 a34,34 0 1,0 0,68 a34,34 0 1,0 0,-68 Z
+          M38,33 a15,15 0 1,1 0,30 a15,15 0 1,1 0,-30 Z
+        "/>
+        {/* F: wing curving up-right from the O */}
+        <path d="M63,50 C70,38 86,35 88,23 C90,12 78,7 68,14 C60,20 58,32 61,42 Z"/>
+      </svg>
+    ),
   },
   FL: {
     label: 'Fansly',
-    bg: 'bg-[#1877F2]',
+    bg: 'bg-[#0F9BD7]',
+    // Heart outline with inner circle — Fansly logo
     icon: (s) => (
-      <svg width={s * 0.65} height={s * 0.65} viewBox="0 0 24 24" fill="white">
-        <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/>
+      <svg width={s} height={s} viewBox="0 0 100 100" fill="none" stroke="white">
+        {/* Heart shape — two arcs meeting at bottom */}
+        <path
+          strokeWidth="9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M50,82 C22,62 10,50 10,35 C10,21 21,13 32,13 C40,13 47,17 50,24 C53,17 60,13 68,13 C79,13 90,21 90,35 C90,50 78,62 50,82 Z"
+        />
+        {/* Inner circle */}
+        <circle cx="50" cy="60" r="9" strokeWidth="7"/>
       </svg>
     ),
   },
   ML: {
     label: 'Maloum',
-    bg: 'bg-gradient-to-br from-violet-600 to-purple-800',
-    text: 'ML',
-    textClass: 'font-black text-white tracking-tight',
+    bg: 'bg-[#E8421C]',
+    // Rounded double-arch M — Maloum logo
+    icon: (s) => (
+      <svg width={s} height={s} viewBox="0 0 100 100" fill="none" stroke="white">
+        <path
+          strokeWidth="11"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M14,78 L14,50 Q14,22 36,22 Q50,22 50,44 Q50,22 64,22 Q86,22 86,50 L86,78"
+        />
+      </svg>
+    ),
   },
   OTHER: {
     label: 'Sonstige',
