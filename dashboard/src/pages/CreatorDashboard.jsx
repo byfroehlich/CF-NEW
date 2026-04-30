@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getJobStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -406,6 +406,7 @@ function MeinContentTab({ week, year }) {
 // ── Statistik Tab ────────────────────────────────────────────
 const PERIOD_LABELS = { month: 'Monat', quarter: 'Quartal', half: 'Halbjahr', year: 'Jahr' }
 const MONTH_NAMES = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
+const PLATFORM_COLORS = { IG:'bg-pink-400', TK:'bg-gray-800', OF:'bg-blue-500', FL:'bg-green-500', ML:'bg-purple-500', OTHER:'bg-gray-400' }
 
 function Bar({ value, max, color = 'bg-indigo-500' }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0
@@ -419,8 +420,78 @@ function Bar({ value, max, color = 'bg-indigo-500' }) {
   )
 }
 
+function StatsSection({ stats, period, setPeriod, platform, setPlatform }) {
+  const maxPlatform = stats?.by_platform?.length > 0 ? Math.max(...stats.by_platform.map(p => p.count)) : 1
+  const maxMonth    = stats?.by_month?.length    > 0 ? Math.max(...stats.by_month.map(m => m.count))    : 1
+
+  return (
+    <div className="space-y-4">
+      {/* Plattform-Filter */}
+      <div className="flex gap-2 flex-wrap">
+        {['Alle','IG','TK','OF','FL','ML'].map(p => (
+          <button key={p} onClick={() => setPlatform(p)}
+            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {/* Zeitraum-Karten */}
+      <div className="grid grid-cols-4 gap-2">
+        {Object.entries(PERIOD_LABELS).map(([key, label]) => (
+          <button key={key} onClick={() => setPeriod(key)}
+            className={`rounded-xl p-3 text-center border transition-all ${period === key ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-300'}`}>
+            <div className={`text-2xl font-bold ${period === key ? 'text-white' : 'text-gray-900'}`}>
+              {stats ? (stats[`${key}_count`] ?? 0) : '–'}
+            </div>
+            <div className={`text-xs mt-0.5 ${period === key ? 'text-indigo-100' : 'text-gray-400'}`}>{label}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* Plattform-Verteilung */}
+      {stats?.by_platform?.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plattformen · {new Date().getFullYear()}</p>
+          {stats.by_platform.map(p => (
+            <div key={p.platform}>
+              <div className="text-xs text-gray-600 mb-1 font-medium">{p.platform}</div>
+              <Bar value={p.count} max={maxPlatform} color={PLATFORM_COLORS[p.platform] || 'bg-indigo-400'} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Monatsverlauf */}
+      {stats?.by_month?.length > 0 && (
+        <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Monatsverlauf · {new Date().getFullYear()}</p>
+          {stats.by_month.map(m => {
+            const monthIdx = parseInt(m.month.split('-')[1]) - 1
+            return (
+              <div key={m.month}>
+                <div className="text-xs text-gray-500 mb-1">{MONTH_NAMES[monthIdx]}</div>
+                <Bar value={m.count} max={maxMonth} />
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {!stats && <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>}
+      {stats && stats.year_count === 0 && (
+        <div className="text-center py-6">
+          <div className="text-3xl mb-2">📊</div>
+          <p className="text-gray-400 text-sm">Noch keine Daten für {new Date().getFullYear()}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function StatistikTab({ week, year }) {
-  const [period, setPeriod] = useState('month')
+  const [dataType, setDataType] = useState('jobs')   // 'jobs' | 'plans'
+  const [period, setPeriod]     = useState('month')
   const [platform, setPlatform] = useState('Alle')
 
   const pf = platform !== 'Alle' ? platform : undefined
@@ -433,16 +504,18 @@ function StatistikTab({ week, year }) {
     queryKey: ['jobs-creator', week, year, 'Alle'],
     queryFn: () => getJobs({ week, year })
   })
-  const { data: stats } = useQuery({
-    queryKey: ['stats-creator', pf],
-    queryFn: () => getJobStats({ platform: pf })
+  const { data: jobStats } = useQuery({
+    queryKey: ['stats-jobs-creator', pf],
+    queryFn: () => getJobStats({ platform: pf }),
+    enabled: dataType === 'jobs'
+  })
+  const { data: planStats } = useQuery({
+    queryKey: ['stats-plans-creator', pf],
+    queryFn: () => getContentPlanStats({ platform: pf }),
+    enabled: dataType === 'plans'
   })
 
-  const periodValue = stats ? (stats[`${period}_count`] ?? 0) : null
-  const maxPlatform = stats?.by_platform?.length > 0 ? Math.max(...stats.by_platform.map(p => p.count)) : 1
-  const maxMonth    = stats?.by_month?.length    > 0 ? Math.max(...stats.by_month.map(m => m.count))    : 1
-
-  const platformColors = { IG:'bg-pink-400', TK:'bg-gray-800', OF:'bg-blue-500', FL:'bg-green-500', ML:'bg-purple-500', OTHER:'bg-gray-400' }
+  const activeStats = dataType === 'jobs' ? jobStats : planStats
 
   return (
     <div className="space-y-6">
@@ -451,9 +524,9 @@ function StatistikTab({ week, year }) {
       <div>
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">KW {week} · {year}</p>
         <div className="grid grid-cols-3 gap-3 mb-4">
-          <StatCard label="Gesamt"   value={summary?.total}       color="gray" />
-          <StatCard label="Offen"    value={summary?.open}        color="red" />
-          <StatCard label="Erledigt" value={summary?.confirmed}   color="green" />
+          <StatCard label="Gesamt"   value={summary?.total}     color="gray" />
+          <StatCard label="Offen"    value={summary?.open}      color="red" />
+          <StatCard label="Erledigt" value={summary?.confirmed} color="green" />
         </div>
         {weekJobs.length > 0 ? (
           <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
@@ -468,7 +541,7 @@ function StatistikTab({ week, year }) {
             ))}
           </div>
         ) : (
-          <p className="text-center text-gray-400 text-xs py-4">Keine Jobs diese Woche</p>
+          <p className="text-center text-gray-400 text-xs py-4">Keine Aufträge diese Woche</p>
         )}
       </div>
 
@@ -476,67 +549,23 @@ function StatistikTab({ week, year }) {
       <div>
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Zeitraum</p>
 
-        {/* Platform-Filter */}
-        <div className="flex gap-2 flex-wrap mb-4">
-          {['Alle','IG','TK','OF','FL','ML'].map(p => (
-            <button key={p} onClick={() => setPlatform(p)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              {p}
+        {/* Datentyp-Toggle */}
+        <div className="flex gap-2 mb-4 bg-gray-100 rounded-xl p-1">
+          {[['jobs','📋 Aufträge'],['plans','🎬 Eigener Content']].map(([val, label]) => (
+            <button key={val} onClick={() => { setDataType(val); setPlatform('Alle') }}
+              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${dataType === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+              {label}
             </button>
           ))}
         </div>
 
-        {/* Zeitraum-Auswahl + Zahl */}
-        <div className="grid grid-cols-4 gap-2 mb-4">
-          {Object.entries(PERIOD_LABELS).map(([key, label]) => (
-            <button key={key} onClick={() => setPeriod(key)}
-              className={`rounded-xl p-3 text-center border transition-all ${period === key ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-300'}`}>
-              <div className={`text-2xl font-bold ${period === key ? 'text-white' : 'text-gray-900'}`}>
-                {stats ? (stats[`${key}_count`] ?? 0) : '–'}
-              </div>
-              <div className={`text-xs mt-0.5 ${period === key ? 'text-indigo-100' : 'text-gray-400'}`}>{label}</div>
-            </button>
-          ))}
-        </div>
-
-        {/* Plattform-Verteilung (Jahresbasis) */}
-        {stats?.by_platform?.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 mb-4">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plattformen · {new Date().getFullYear()}</p>
-            {stats.by_platform.map(p => (
-              <div key={p.platform}>
-                <div className="flex justify-between text-xs text-gray-600 mb-1">
-                  <span className="font-medium">{p.platform}</span>
-                </div>
-                <Bar value={p.count} max={maxPlatform} color={platformColors[p.platform] || 'bg-indigo-400'} />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Monatsverlauf */}
-        {stats?.by_month?.length > 0 && (
-          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Monatsverlauf · {new Date().getFullYear()}</p>
-            {stats.by_month.map(m => {
-              const monthIdx = parseInt(m.month.split('-')[1]) - 1
-              return (
-                <div key={m.month}>
-                  <div className="text-xs text-gray-500 mb-1">{MONTH_NAMES[monthIdx]}</div>
-                  <Bar value={m.count} max={maxMonth} />
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        {!stats && <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>}
-        {stats && stats.year_count === 0 && (
-          <div className="text-center py-8">
-            <div className="text-3xl mb-2">📊</div>
-            <p className="text-gray-400 text-sm">Noch keine Daten für {new Date().getFullYear()}</p>
-          </div>
-        )}
+        <StatsSection
+          stats={activeStats}
+          period={period}
+          setPeriod={setPeriod}
+          platform={platform}
+          setPlatform={setPlatform}
+        />
       </div>
     </div>
   )

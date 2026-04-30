@@ -66,6 +66,7 @@ export const getContentPlans = params => api.get('/api/v1/content-plans', { para
 export const createContentPlan = data => api.post('/api/v1/content-plans', data).then(r => r.data)
 export const updateContentPlan = (id, data) => api.patch(`/api/v1/content-plans/${id}`, data).then(r => r.data)
 export const deleteContentPlan = id => api.delete(`/api/v1/content-plans/${id}`).then(r => r.data)
+export const getContentPlanStats = params => api.get('/api/v1/content-plans/stats', { params }).then(r => r.data)
 
 // Logs
 export const getLogs = params => api.get('/api/v1/logs', { params }).then(r => r.data)

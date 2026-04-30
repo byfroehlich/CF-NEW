@@ -5,6 +5,106 @@ import { validate, contentPlanSchema, contentPlanUpdateSchema } from '../validat
 
 const router = Router()
 
+// GET /api/v1/content-plans/stats
+router.get('/stats', requireAnyRole, async (req, res) => {
+  const { platform } = req.query
+  const pf = platform && platform !== 'Alle' ? platform : null
+  try {
+    let totals, byPlatform, byMonth
+
+    if (req.user.role === 'creator') {
+      const creatorId = req.user.creator_id ?? null
+      if (!creatorId) return res.json({ month_count: 0, quarter_count: 0, half_count: 0, year_count: 0, by_platform: [], by_month: [] })
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM content_plans
+        WHERE creator_id = ${creatorId}::uuid AND deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count
+        FROM content_plans
+        WHERE creator_id = ${creatorId}::uuid AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM content_plans
+        WHERE creator_id = ${creatorId}::uuid AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    } else if (req.user.role === 'agency') {
+      const agencyId = req.user.agency_id ?? null
+      if (!agencyId) return res.json({ month_count: 0, quarter_count: 0, half_count: 0, year_count: 0, by_platform: [], by_month: [] })
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM content_plans
+        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count
+        FROM content_plans
+        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM content_plans
+        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    } else {
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM content_plans WHERE deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count FROM content_plans
+        WHERE deleted_at IS NULL AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM content_plans WHERE deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    }
+
+    res.json({ ...totals, by_platform: byPlatform, by_month: byMonth })
+  } catch (err) {
+    console.error('Content plan stats error:', err)
+    res.status(500).json({ error: 'Serverfehler', detail: err.message })
+  }
+})
+
 // GET /api/v1/content-plans
 router.get('/', requireAnyRole, async (req, res) => {
   const { week, year, platform } = req.query
