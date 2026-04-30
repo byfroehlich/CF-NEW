@@ -106,7 +106,7 @@ function CreatorTab() {
   const mutation = useMutation({
     mutationFn: createCreator,
     onSuccess: () => {
-      qc.invalidateQueries(['creators-agency'])
+      qc.invalidateQueries({ queryKey: ['creators-agency'] })
       setShowForm(false)
       setForm({ real_name: '', artist_name: '', contact_email: '', phone: '', birthday: '', platforms: [], notes: '', login_email: '', login_password: '' })
     },

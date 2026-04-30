@@ -156,7 +156,7 @@ function MeinContentTab({ week, year }) {
 
   const EMPTY = { platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false }
 
-  const { data: plans = [], isLoading } = useQuery({
+  const { data: plans = [], isLoading, isError, error } = useQuery({
     queryKey: ['plans-creator', week, year, platform],
     queryFn: () => getContentPlans({ week, year, ...(platform !== 'Alle' && { platform }) })
   })
@@ -167,17 +167,18 @@ function MeinContentTab({ week, year }) {
 
   const createMut = useMutation({
     mutationFn: data => createContentPlan({ ...data, week_number: week, year }),
-    onSuccess: () => { qc.invalidateQueries(['plans-creator']); setShowNew(false) }
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['plans-creator'] }); setShowNew(false) },
+    onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
-    onSuccess: () => { qc.invalidateQueries(['plans-creator']); setEditId(null) }
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['plans-creator'] }); setEditId(null) }
   })
 
   const deleteMut = useMutation({
     mutationFn: deleteContentPlan,
-    onSuccess: () => qc.invalidateQueries(['plans-creator'])
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans-creator'] })
   })
 
   function cycleStatus(p) {
@@ -200,7 +201,7 @@ function MeinContentTab({ week, year }) {
     })
     // Original als "geschoben" markieren
     await updateContentPlan(p.id, { pushed_to_week: nw, pushed_to_year: ny })
-    qc.invalidateQueries(['plans-creator'])
+    qc.invalidateQueries({ queryKey: ['plans-creator'] })
   }
 
   const nxt = nextWeekOf(week, year)
@@ -245,7 +246,11 @@ function MeinContentTab({ week, year }) {
       )}
 
       {/* Pläne Liste */}
-      {isLoading ? (
+      {isError ? (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          Fehler beim Laden: {error?.response?.data?.error || error?.message || 'Unbekannter Fehler'}
+        </div>
+      ) : isLoading ? (
         <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>
       ) : plans.length === 0 ? (
         <div className="text-center py-12">

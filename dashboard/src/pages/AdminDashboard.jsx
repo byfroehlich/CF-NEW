@@ -101,7 +101,7 @@ function CreatorTab() {
 
   const mutation = useMutation({
     mutationFn: createCreator,
-    onSuccess: () => { qc.invalidateQueries(['creators-admin']); setShowForm(false); setForm({ real_name:'',artist_name:'',contact_email:'',phone:'',birthday:'',platforms:[],notes:'',agency_id:'',login_email:'',login_password:'' }) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['creators-admin'] }); setShowForm(false); setForm({ real_name:'',artist_name:'',contact_email:'',phone:'',birthday:'',platforms:[],notes:'',agency_id:'',login_email:'',login_password:'' }) },
     onError: e => setErr(e.response?.data?.error || 'Fehler beim Anlegen')
   })
 
@@ -204,7 +204,7 @@ function AgenturTab() {
   const { data: agencies = [] } = useQuery({ queryKey: ['agencies-admin'], queryFn: getAgencies })
   const mutation = useMutation({
     mutationFn: createAgency,
-    onSuccess: () => { qc.invalidateQueries(['agencies-admin']); setShowForm(false) },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['agencies-admin'] }); setShowForm(false) },
     onError: e => setErr(e.response?.data?.error || 'Fehler beim Anlegen')
   })
 
