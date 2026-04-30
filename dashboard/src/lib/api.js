@@ -74,7 +74,10 @@ export const uploadFile = (file, type = 'photo') => {
   form.append('file', file)
   return api.post(`/api/v1/upload?type=${type}`, form, {
     headers: { 'Content-Type': 'multipart/form-data' }
-  }).then(r => r.data)
+  }).then(r => ({
+    ...r.data,
+    url: r.data.url.startsWith('/') ? `${BASE}${r.data.url}` : r.data.url
+  }))
 }
 
 // Agencies

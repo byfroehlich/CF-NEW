@@ -96,6 +96,43 @@ const ACTIVATION_LABEL = {
   agency_confirmed:'Bestätigt', active:'Freigeschaltet', rejected:'Abgelehnt',
 }
 
+// ── Foto-Upload Sektion (Admin + Agency) ─────────────────────
+function PhotoUploadSection({ label, photos, type, max, creatorId, onUploaded, accept = 'image/*' }) {
+  const [uploading, setUploading] = useState(false)
+  async function handleUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setUploading(true)
+    try {
+      const { url } = await uploadFile(file, type === 'id_document' ? 'id_document' : 'photo')
+      await addCreatorPhoto(creatorId, { url, type })
+      onUploaded()
+    } catch (err) {
+      alert('Upload fehlgeschlagen: ' + (err.response?.data?.error || err.message))
+    } finally { setUploading(false) }
+  }
+  return (
+    <div>
+      <p className="text-xs text-gray-400 mb-1.5">{label} ({photos.length}/{max})</p>
+      <div className="flex gap-2 flex-wrap items-center">
+        {photos.map(p => (
+          <img key={p.id} src={p.url} className="w-16 h-16 rounded-lg object-cover border border-gray-200" alt="" />
+        ))}
+        {photos.length < max && (
+          <label className={`w-16 h-16 rounded-lg border-2 border-dashed flex items-center justify-center cursor-pointer transition-colors ${uploading ? 'border-gray-200 bg-gray-50' : 'border-gray-300 hover:border-indigo-400 hover:bg-indigo-50'}`}>
+            {uploading
+              ? <svg className="w-4 h-4 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
+              : <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+            }
+            <input type="file" accept={accept} className="sr-only" onChange={handleUpload} disabled={uploading} />
+          </label>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Admin Creator Card ───────────────────────────────────────
 function AdminCreatorCard({ c, agencies, qc }) {
   const [expanded, setExpanded] = useState(false)
@@ -164,8 +201,9 @@ function AdminCreatorCard({ c, agencies, qc }) {
             ? <img src={displayPhoto} className="w-16 h-16 rounded-xl object-cover" alt="" />
             : <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-violet-400 to-pink-400 flex items-center justify-center text-white font-bold text-xl">{(c.real_name||'?')[0]}</div>
           }
-          <div className="absolute inset-0 rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-            {uploadingPhoto ? <span className="text-white text-xs">…</span>
+          <div className={`absolute inset-0 rounded-xl bg-black/40 flex items-center justify-center transition-opacity ${uploadingPhoto ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+            {uploadingPhoto
+              ? <svg className="w-5 h-5 text-white animate-spin" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/></svg>
               : <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             }
           </div>
@@ -293,22 +331,8 @@ function AdminCreatorCard({ c, agencies, qc }) {
           {c.billing_party && <div className="text-xs text-gray-400">Abrechnung: <span className="font-medium text-gray-600">{c.billing_party === 'agency' ? 'Agentur' : 'Creator'}</span></div>}
           {c.notes && <div className="bg-gray-50 rounded-lg px-2.5 py-2 text-xs text-gray-500 italic">{c.notes}</div>}
 
-          {rolePhotos.length > 0 && (
-            <div>
-              <p className="text-gray-400 mb-1.5">Rollenfotos ({rolePhotos.length})</p>
-              <div className="flex gap-2 flex-wrap">
-                {rolePhotos.map(p => <img key={p.id} src={p.url} className="w-16 h-16 rounded-lg object-cover border border-gray-200" alt="" />)}
-              </div>
-            </div>
-          )}
-          {idPhotos.length > 0 && (
-            <div>
-              <p className="text-gray-400 mb-1.5">Ausweisdokumente ({idPhotos.length})</p>
-              <div className="flex gap-2 flex-wrap">
-                {idPhotos.map(p => <img key={p.id} src={p.url} className="w-24 h-16 rounded-lg object-cover border border-blue-200" alt="" />)}
-              </div>
-            </div>
-          )}
+          <PhotoUploadSection label="Rollenfotos" photos={rolePhotos} type="role" max={5} creatorId={c.id} onUploaded={refetchPhotos} />
+          <PhotoUploadSection label="Ausweisdokumente" photos={idPhotos} type="id_document" max={2} creatorId={c.id} onUploaded={refetchPhotos} accept="image/*,.pdf" />
           <p className="text-gray-300">seit {new Date(c.created_at).toLocaleDateString('de')}</p>
         </div>
       )}

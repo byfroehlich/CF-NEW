@@ -53,9 +53,9 @@ router.post('/', requireAnyRole, (req, res, next) => {
     }
     if (!req.file) return res.status(400).json({ error: 'Keine Datei übermittelt' })
 
-    const BASE = process.env.API_BASE_URL || `http://localhost:3001`
-    const url = `${BASE}/uploads/${req.query.type === 'id_document' ? 'id' : 'photos'}/${req.file.filename}`
-    res.json({ url, filename: req.file.filename })
+    // Return relative path — client prepends API base URL
+    const urlPath = `/uploads/${req.query.type === 'id_document' ? 'id' : 'photos'}/${req.file.filename}`
+    res.json({ url: urlPath, filename: req.file.filename })
   })
 })
 

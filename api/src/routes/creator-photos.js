@@ -61,22 +61,21 @@ router.post('/', requireAnyRole, async (req, res) => {
   if (role === 'agency') {
     const [c] = await sql`SELECT id FROM creators WHERE id = ${id} AND agency_id = ${agency_id} AND deleted_at IS NULL`
     if (!c) return res.status(404).json({ error: 'Creator nicht gefunden' })
-    if (type === 'id_document') return res.status(403).json({ error: 'ID-Dokumente nur Creator oder Admin' })
   }
 
   try {
-    // Enforce limits
-    const [{ count }] = await sql`
-      SELECT COUNT(*) FROM creator_photos
-      WHERE creator_id = ${id} AND type = ${type} AND deleted_at IS NULL
-    `
-    if (parseInt(count) >= LIMITS[type]) {
-      return res.status(409).json({ error: `Maximal ${LIMITS[type]} Foto(s) vom Typ "${type}" erlaubt` })
-    }
-
-    // If adding new profile photo, soft-delete old ones first
+    // Profile photo: always replace (soft-delete existing first, no limit check needed)
     if (type === 'profile') {
       await sql`UPDATE creator_photos SET deleted_at = now() WHERE creator_id = ${id} AND type = 'profile' AND deleted_at IS NULL`
+    } else {
+      // Enforce limits for role and id_document types
+      const [{ count }] = await sql`
+        SELECT COUNT(*) FROM creator_photos
+        WHERE creator_id = ${id} AND type = ${type} AND deleted_at IS NULL
+      `
+      if (parseInt(count) >= LIMITS[type]) {
+        return res.status(409).json({ error: `Maximal ${LIMITS[type]} Foto(s) vom Typ "${type}" erlaubt` })
+      }
     }
 
     const [photo] = await sql`
