@@ -106,6 +106,7 @@ router.patch('/:id', requireAgencyOrAdmin, validate(creatorUpdateSchema), async 
     const f = req.body
     const query = req.user.role === 'admin'
       ? sql`UPDATE creators SET
+          agency_id        = COALESCE(${f.agency_id ?? null}, agency_id),
           real_name        = COALESCE(${f.real_name ?? null}, real_name),
           artist_name      = COALESCE(${f.artist_name ?? null}, artist_name),
           photo_url        = COALESCE(${f.photo_url ?? null}, photo_url),

@@ -184,7 +184,7 @@ function AdminCreatorCard({ c, agencies, qc }) {
   }
 
   function openEdit() {
-    setEditForm({ real_name:c.real_name||'', artist_name:c.artist_name||'', contact_email:c.contact_email||'', phone:c.phone||'', birthday:c.birthday?.slice(0,10)||'', notes:c.notes||'', platforms:[...(c.platforms||[])], telegram_chat_id:c.telegram_chat_id||'', billing_party:c.billing_party||'agency' })
+    setEditForm({ agency_id:c.agency_id||'', real_name:c.real_name||'', artist_name:c.artist_name||'', contact_email:c.contact_email||'', phone:c.phone||'', birthday:c.birthday?.slice(0,10)||'', notes:c.notes||'', platforms:[...(c.platforms||[])], telegram_chat_id:c.telegram_chat_id||'', billing_party:c.billing_party||'agency' })
     setEditing(true)
   }
 
@@ -242,7 +242,7 @@ function AdminCreatorCard({ c, agencies, qc }) {
       </div>
 
       {/* Aktivierung */}
-      {needsActivation && c.activation_status !== 'pending' && !editing && (
+      {needsActivation && !editing && (
         <div className="pt-1">
           {rejectOpen ? (
             <div className="space-y-2">
@@ -272,6 +272,14 @@ function AdminCreatorCard({ c, agencies, qc }) {
       {editing && editForm && (
         <div className="space-y-3 border-t border-gray-100 pt-3">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Bearbeiten</p>
+          <div>
+            <label className="text-xs text-gray-500 mb-0.5 block">Agentur</label>
+            <select value={editForm.agency_id} onChange={e => setEditForm(f=>({...f,agency_id:e.target.value}))}
+              className="w-full px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
+              <option value="">— keine —</option>
+              {agencies.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
           {[['real_name','Bürgerlicher Name','text'],['artist_name','Künstlername','text'],['contact_email','E-Mail','email'],['phone','Telefon','tel'],['telegram_chat_id','Telegram Chat ID','text']].map(([key,label,type]) => (
             <div key={key}>
               <label className="text-xs text-gray-500 mb-0.5 block">{label}</label>
@@ -311,7 +319,12 @@ function AdminCreatorCard({ c, agencies, qc }) {
           </div>
           <div className="flex gap-2">
             <button onClick={() => setEditing(false)} className="flex-1 py-1.5 border border-gray-300 text-sm text-gray-700 rounded-lg hover:bg-gray-50">Abbrechen</button>
-            <button onClick={() => editMut.mutate(editForm)} disabled={editMut.isPending}
+            <button onClick={() => editMut.mutate({
+                ...editForm,
+                agency_id: editForm.agency_id || null,
+                telegram_chat_id: editForm.telegram_chat_id ? parseInt(editForm.telegram_chat_id) : null,
+                birthday: editForm.birthday || null,
+              })} disabled={editMut.isPending}
               className="flex-1 py-1.5 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
               {editMut.isPending ? 'Speichern…' : 'Speichern'}
             </button>

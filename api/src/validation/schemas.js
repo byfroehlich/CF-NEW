@@ -71,6 +71,7 @@ export const creatorSchema = z.object({
 })
 
 export const creatorUpdateSchema = z.object({
+  agency_id: z.string().uuid().optional().nullable(),
   real_name: z.string().min(1).optional(),
   artist_name: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
