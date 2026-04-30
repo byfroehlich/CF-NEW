@@ -532,28 +532,29 @@ function MeinContentTab({ week, year }) {
         ))}
       </div>
 
-      {/* Filter */}
-      <PlatformFilter value={platform} onChange={setPlatform} />
-      <div className="flex gap-2">
-        {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
-          <button key={val} onClick={() => setPartnerFilter(val)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${partnerFilter === val ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Status-Filter (nur Wochenplan) */}
-      {subTab === 'woche' && (
-        <div className="flex gap-2 flex-wrap">
-          {[['Alle','Alle'],['geplant','📅 Geplant'],['fertig','✅ Erledigt'],['geschoben','→ Geschoben']].map(([val, label]) => (
-            <button key={val} onClick={() => setStatusFilter(val)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${statusFilter === val ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+      {/* Filter — kompakt in einem Block */}
+      <div className="space-y-2">
+        <PlatformFilter value={platform} onChange={setPlatform} />
+        <div className="flex flex-wrap gap-1.5 items-center">
+          {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
+            <button key={val} onClick={() => setPartnerFilter(val)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${partnerFilter === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
               {label}
             </button>
           ))}
+          {subTab === 'woche' && (
+            <>
+              <span className="w-px h-3.5 bg-gray-200 flex-shrink-0" />
+              {[['Alle','Alle'],['geplant','Geplant'],['fertig','Fertig'],['geschoben','Geschoben']].map(([val, label]) => (
+                <button key={`s-${val}`} onClick={() => setStatusFilter(val)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  {label}
+                </button>
+              ))}
+            </>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Ideenspeicher-Hinweis */}
       {subTab === 'ideen' && (
