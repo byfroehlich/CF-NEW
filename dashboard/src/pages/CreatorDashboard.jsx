@@ -255,7 +255,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
   return (
     <div className={`bg-white rounded-2xl border p-4 transition-all ${
-      p.status === 'done' ? 'border-green-200 opacity-70' :
+      p.status === 'done' ? 'border-green-200 bg-green-50 opacity-70' :
       p.carried_over_from ? 'border-amber-300 bg-amber-50/30' :
       'border-gray-200'
     }`}>
