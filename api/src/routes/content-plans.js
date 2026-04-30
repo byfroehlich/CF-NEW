@@ -206,8 +206,8 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
         partner_type      = COALESCE(${f.partner_type ?? null}, partner_type),
         week_number       = COALESCE(${f.week_number ?? null}, week_number),
         year              = COALESCE(${f.year ?? null}, year),
-        pushed_to_week    = COALESCE(${f.pushed_to_week ?? null}, pushed_to_week),
-        pushed_to_year    = COALESCE(${f.pushed_to_year ?? null}, pushed_to_year)
+        pushed_to_week    = CASE WHEN ${'pushed_to_week' in f}::boolean THEN ${f.pushed_to_week ?? null} ELSE pushed_to_week END,
+        pushed_to_year    = CASE WHEN ${'pushed_to_year' in f}::boolean THEN ${f.pushed_to_year ?? null} ELSE pushed_to_year END
       WHERE id = ${id}
       RETURNING *
     `

@@ -242,7 +242,7 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
 }
 
 // ── Plan-Karte (wiederverwendet in Wochenplan + Ideen) ───────
-function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, busyId, showWeekBadge, isIdeaTab }) {
+function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, showWeekBadge, isIdeaTab }) {
   const nxt = nextWeekOf(week, year)
   const [confirmDel, setConfirmDel] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -255,14 +255,13 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
   return (
     <div className={`bg-white rounded-2xl border p-4 transition-all ${
-      p.status === 'done' ? 'border-green-200 bg-green-50 opacity-70' :
-      p.pushed_to_week ? 'border-orange-200 bg-orange-50 opacity-60' :
-      p.carried_over_from ? 'border-amber-300 bg-amber-50/30' :
+      p.status === 'done' ? 'border-green-300 bg-green-100' :
+      p.pushed_to_week ? 'border-orange-300 bg-orange-100 opacity-75' :
       'border-gray-200'
     }`}>
-      {p.carried_over_from && (
-        <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 mb-3">
-          <span>↩</span><span className="font-medium">Übertrag aus vorheriger Woche</span>
+      {p.pushed_to_week && (
+        <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-200/60 rounded-lg px-2.5 py-1.5 mb-3">
+          <span>→</span><span className="font-medium">Verschoben nach KW{p.pushed_to_week}</span>
         </div>
       )}
 
@@ -305,8 +304,8 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 {showWeekBadge && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-400 font-medium">KW{p.week_number}</span>
                 )}
-                {p.pushed_to_week && (
-                  <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week}</span>
+                {p.carried_over_from && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">↩ Übertrag</span>
                 )}
               </div>
               {p.title && (
@@ -340,7 +339,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 </button>
               )}
 
-              {/* Push / Einplanen — outlined pill */}
+              {/* Push / Einplanen / Rückgängig — outlined pill */}
               {isIdeaTab ? (
                 <button
                   onClick={() => updateMut.mutate({ id: p.id, status: 'planned', week_number: week, year })}
@@ -348,13 +347,16 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                   className="text-xs font-semibold px-2.5 py-1 rounded-full border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-40 transition-colors whitespace-nowrap">
                   {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : `→ KW${week}`}
                 </button>
+              ) : p.pushed_to_week ? (
+                <button onClick={() => undoPushMut.mutate({ id: p.id, allPlans })} disabled={undoPushMut?.isPending || busy}
+                  className="text-xs font-medium px-2.5 py-1 rounded-full border border-orange-400 text-orange-600 hover:bg-orange-50 disabled:opacity-40 transition-colors whitespace-nowrap">
+                  {undoPushMut?.isPending && undoPushMut.variables?.id === p.id ? '…' : '↩ Rückgängig'}
+                </button>
               ) : (
-                !p.pushed_to_week && (
-                  <button onClick={() => pushMut.mutate(p)} disabled={pushMut.isPending || busy}
-                    className="text-xs font-medium px-2.5 py-1 rounded-full border border-indigo-400 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 transition-colors whitespace-nowrap">
-                    {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
-                  </button>
-                )
+                <button onClick={() => pushMut.mutate(p)} disabled={pushMut.isPending || busy}
+                  className="text-xs font-medium px-2.5 py-1 rounded-full border border-indigo-400 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 transition-colors whitespace-nowrap">
+                  {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
+                </button>
               )}
             </div>
           </div>
@@ -421,6 +423,7 @@ function MeinContentTab({ week, year }) {
   const [partnerFilter, setPartnerFilter] = useState('Alle')
   const [showNew, setShowNew]       = useState(false)
   const [editId, setEditId]         = useState(null)
+  const [statusFilter, setStatusFilter] = useState('Alle')
 
   const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo' }
   const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo' }
@@ -438,9 +441,15 @@ function MeinContentTab({ week, year }) {
   })
 
   const applyPartner = list => partnerFilter === 'Alle' ? list : list.filter(p => p.partner_type === partnerFilter.toLowerCase())
+  const applyStatus  = list => {
+    if (statusFilter === 'geplant')   return list.filter(p => p.status !== 'done' && !p.pushed_to_week)
+    if (statusFilter === 'fertig')    return list.filter(p => p.status === 'done')
+    if (statusFilter === 'geschoben') return list.filter(p => !!p.pushed_to_week)
+    return list
+  }
 
   // Wochenplan: nur geplant + fertig (Ideen gehören in den Ideenspeicher)
-  const weekPlans  = applyPartner(weekRaw.filter(p => p.status !== 'idea'))
+  const weekPlans  = applyStatus(applyPartner(weekRaw.filter(p => p.status !== 'idea')))
   const ideaPlans  = applyPartner(allRaw.filter(p => p.status === 'idea'))
 
   const plans      = subTab === 'woche' ? weekPlans : ideaPlans
@@ -485,9 +494,20 @@ function MeinContentTab({ week, year }) {
     onError: e => alert('Fehler beim Schieben: ' + (e.response?.data?.error || e.message))
   })
 
+  const undoPushMut = useMutation({
+    mutationFn: async ({ id, allPlans }) => {
+      const copy = allPlans.find(c => c.carried_over_from === id)
+      if (copy) await deleteContentPlan(copy.id)
+      await updateContentPlan(id, { pushed_to_week: null, pushed_to_year: null })
+    },
+    onSuccess: invAll,
+    onError: e => alert('Fehler beim Rückgängig: ' + (e.response?.data?.error || e.message))
+  })
+
   const busyId = (updateMut.isPending && updateMut.variables?.id)
     || (deleteMut.isPending && deleteMut.variables)
     || (pushMut.isPending && pushMut.variables?.id)
+    || (undoPushMut.isPending && undoPushMut.variables?.id)
 
   const gesamt   = weekPlans.length
   const offen    = weekPlans.filter(p => p.status === 'planned').length
@@ -505,7 +525,7 @@ function MeinContentTab({ week, year }) {
       {/* Unterreiter */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
         {[['woche',`📅 KW${week}`],['ideen','💡 Ideenspeicher']].map(([val, label]) => (
-          <button key={val} onClick={() => { setSubTab(val); setShowNew(false); setEditId(null) }}
+          <button key={val} onClick={() => { setSubTab(val); setShowNew(false); setEditId(null); setStatusFilter('Alle') }}
             className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {label}
           </button>
@@ -522,6 +542,18 @@ function MeinContentTab({ week, year }) {
           </button>
         ))}
       </div>
+
+      {/* Status-Filter (nur Wochenplan) */}
+      {subTab === 'woche' && (
+        <div className="flex gap-2 flex-wrap">
+          {[['Alle','Alle'],['geplant','📅 Geplant'],['fertig','✅ Erledigt'],['geschoben','→ Geschoben']].map(([val, label]) => (
+            <button key={val} onClick={() => setStatusFilter(val)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${statusFilter === val ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Ideenspeicher-Hinweis */}
       {subTab === 'ideen' && (
@@ -573,7 +605,8 @@ function MeinContentTab({ week, year }) {
               p={p} idx={idx}
               week={week} year={year}
               editId={editId} setEditId={setEditId}
-              updateMut={updateMut} deleteMut={deleteMut} pushMut={pushMut}
+              updateMut={updateMut} deleteMut={deleteMut} pushMut={pushMut} undoPushMut={undoPushMut}
+              allPlans={allRaw}
               busyId={busyId}
               showWeekBadge={subTab === 'ideen'}
               isIdeaTab={subTab === 'ideen'}
@@ -691,51 +724,79 @@ function StatistikTab({ week, year }) {
     queryFn: () => getContentPlanStats({ platform: pf }),
     enabled: dataType === 'plans'
   })
+  const { data: weekPlans = [] } = useQuery({
+    queryKey: ['plans-week-stat', week, year],
+    queryFn: () => getContentPlans({ week, year }),
+    enabled: dataType === 'plans'
+  })
 
   const activeStats = dataType === 'jobs' ? jobStats : planStats
 
+  const kwGesamt   = dataType === 'jobs' ? (summary?.total     ?? 0) : weekPlans.filter(p => p.status !== 'idea').length
+  const kwOffen    = dataType === 'jobs' ? (summary?.open      ?? 0) : weekPlans.filter(p => p.status === 'planned' || p.status === 'filming').length
+  const kwErledigt = dataType === 'jobs' ? (summary?.confirmed ?? 0) : weekPlans.filter(p => p.status === 'done').length
+
   return (
     <div className="space-y-6">
+
+      {/* ── Datentyp-Toggle — ganz oben ─────────────────── */}
+      <div className="flex gap-2 bg-gray-100 rounded-xl p-1">
+        {[['jobs','📋 Aufträge'],['plans','🎬 Eigener Content']].map(([val, label]) => (
+          <button key={val} onClick={() => { setDataType(val); setPlatform('Alle') }}
+            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${dataType === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* ── Wochenübersicht ─────────────────────────────── */}
       <div>
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">KW {week} · {year}</p>
         <div className="grid grid-cols-3 gap-3 mb-4">
-          <StatCard label="Gesamt"   value={summary?.total}     color="gray" />
-          <StatCard label="Offen"    value={summary?.open}      color="red" />
-          <StatCard label="Erledigt" value={summary?.confirmed} color="green" />
+          <StatCard label="Gesamt"   value={kwGesamt}   color="gray" />
+          <StatCard label={dataType === 'jobs' ? 'Offen' : 'Geplant'} value={kwOffen}    color="red" />
+          <StatCard label="Erledigt" value={kwErledigt} color="green" />
         </div>
-        {weekJobs.length > 0 ? (
-          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
-            {weekJobs.map(j => (
-              <div key={j.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <PlatformIcon platform={j.platform} size="badge" />
-                  {j.source_link && <a href={j.source_link} target="_blank" rel="noreferrer" className="text-xs text-violet-500 hover:underline truncate max-w-[120px]">Link</a>}
+        {dataType === 'jobs' ? (
+          weekJobs.length > 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {weekJobs.map(j => (
+                <div key={j.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <PlatformIcon platform={j.platform} size="badge" />
+                    {j.source_link && <a href={j.source_link} target="_blank" rel="noreferrer" className="text-xs text-violet-500 hover:underline truncate max-w-[120px]">Link</a>}
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[j.status]}`}>{STATUS_LABELS[j.status]}</span>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[j.status]}`}>{STATUS_LABELS[j.status]}</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-400 text-xs py-4">Keine Aufträge diese Woche</p>
+          )
         ) : (
-          <p className="text-center text-gray-400 text-xs py-4">Keine Aufträge diese Woche</p>
+          weekPlans.filter(p => p.status !== 'idea').length > 0 ? (
+            <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+              {weekPlans.filter(p => p.status !== 'idea').map(p => (
+                <div key={p.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <PlatformIcon platform={p.platform} size="badge" />
+                    <span className="text-xs text-gray-700 truncate max-w-[160px]">{p.title || '(kein Titel)'}</span>
+                  </div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}>
+                    {PLAN_STATUS[p.status] || p.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center text-gray-400 text-xs py-4">Keine Content-Pläne diese Woche</p>
+          )
         )}
       </div>
 
       {/* ── Zeitraum-Statistik ───────────────────────────── */}
       <div>
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Zeitraum</p>
-
-        {/* Datentyp-Toggle */}
-        <div className="flex gap-2 mb-4 bg-gray-100 rounded-xl p-1">
-          {[['jobs','📋 Aufträge'],['plans','🎬 Eigener Content']].map(([val, label]) => (
-            <button key={val} onClick={() => { setDataType(val); setPlatform('Alle') }}
-              className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${dataType === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
-
         <StatsSection
           stats={activeStats}
           period={period}
