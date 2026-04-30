@@ -257,10 +257,12 @@ function CreatorTab() {
         <p className="text-center text-gray-400 text-sm py-12">Noch keine Creator angelegt.</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {creators.map(c => (
-            <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4">
+          {creators.map(c => {
+            const age = c.birthday ? Math.floor((Date.now() - new Date(c.birthday)) / 31557600000) : null
+            return (
+            <div key={c.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
+              {/* Header: Avatar + Namen */}
               <div className="flex items-center gap-3">
-                {/* Avatar mit Foto-Upload */}
                 <label className="relative cursor-pointer group flex-shrink-0">
                   {c.photo_url
                     ? <img src={c.photo_url} className="w-12 h-12 rounded-full object-cover" alt="" />
@@ -274,22 +276,66 @@ function CreatorTab() {
                   </div>
                   <input type="file" accept="image/*" className="sr-only" onChange={e => handlePhotoUpload(c.id, e)} />
                 </label>
-                <div>
-                  <p className="font-medium text-gray-900 text-sm">{c.real_name}</p>
-                  {c.artist_name && <p className="text-xs text-gray-400">{c.artist_name}</p>}
+                <div className="min-w-0">
+                  <p className="font-semibold text-gray-900 text-sm leading-tight">{c.real_name}</p>
+                  {c.artist_name && <p className="text-xs text-violet-500 font-medium mt-0.5">@{c.artist_name}</p>}
                 </div>
               </div>
-              <div className="flex gap-1.5 mt-3 flex-wrap">
+
+              {/* Plattformen */}
+              <div className="flex gap-1.5 flex-wrap">
                 {c.platforms?.map(p => <PlatformIcon key={p} platform={p} size="badge" />)}
               </div>
-              <div className="mt-2 flex items-center gap-2">
+
+              {/* Kontakt-Infos */}
+              <div className="space-y-1 text-xs text-gray-500">
+                {c.contact_email && (
+                  <div className="flex items-center gap-1.5 truncate">
+                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                    <span className="truncate">{c.contact_email}</span>
+                  </div>
+                )}
+                {c.phone && (
+                  <div className="flex items-center gap-1.5">
+                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
+                    <span>{c.phone}</span>
+                  </div>
+                )}
+                {age !== null && (
+                  <div className="flex items-center gap-1.5">
+                    <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    <span>{age} Jahre</span>
+                    {age < 18 && <span className="text-red-600 font-semibold">⚠ Minderjährig</span>}
+                    {age >= 18 && <span className="text-green-600">✓ 18+</span>}
+                  </div>
+                )}
+                <div className="flex items-center gap-1.5">
+                  <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+                  {c.telegram_chat_id
+                    ? <span className="text-green-600">Telegram verknüpft</span>
+                    : <span className="text-gray-400">Telegram ausstehend</span>
+                  }
+                </div>
+              </div>
+
+              {/* Notizen (wenn vorhanden) */}
+              {c.notes && (
+                <div className="bg-gray-50 rounded-lg px-2.5 py-2 text-xs text-gray-500 italic">
+                  {c.notes}
+                </div>
+              )}
+
+              {/* Footer: Status-Badges */}
+              <div className="flex items-center gap-2 pt-1 border-t border-gray-100 flex-wrap">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${c.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{c.active ? 'Aktiv' : 'Inaktiv'}</span>
                 {changeRequests.some(r => r.creator_id === c.id && r.status === 'pending') && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">⏳ Anfrage</span>
                 )}
+                <span className="text-xs text-gray-300 ml-auto">seit {new Date(c.created_at).toLocaleDateString('de')}</span>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
