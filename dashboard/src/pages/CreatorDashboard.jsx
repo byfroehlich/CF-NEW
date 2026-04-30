@@ -277,7 +277,7 @@ function MeinContentTab({ week, year }) {
       {/* Pläne Liste */}
       {isError ? (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-          Fehler beim Laden: {error?.response?.data?.error || error?.message || 'Unbekannter Fehler'}
+          Fehler: {error?.response?.data?.detail || error?.response?.data?.error || error?.message || 'Unbekannter Fehler'}
         </div>
       ) : isLoading ? (
         <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>
