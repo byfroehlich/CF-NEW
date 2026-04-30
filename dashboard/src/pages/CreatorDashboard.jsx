@@ -101,6 +101,85 @@ function nextWeekOf(week, year) {
   return { week: week + 1, year }
 }
 
+// ── Video-Embed-Helper ───────────────────────────────────────
+function getEmbedUrl(url) {
+  if (!url) return null
+  try {
+    const u = new URL(url)
+    // Instagram post / reel / tv
+    if (u.hostname.includes('instagram.com')) {
+      const m = u.pathname.match(/\/(p|reel|tv)\/([A-Za-z0-9_-]+)/)
+      if (m) return `https://www.instagram.com/${m[1]}/${m[2]}/embed/`
+    }
+    // TikTok
+    if (u.hostname.includes('tiktok.com')) {
+      const m = u.pathname.match(/\/video\/(\d+)/)
+      if (m) return `https://www.tiktok.com/embed/v2/${m[1]}`
+    }
+    // YouTube
+    if (u.hostname.includes('youtube.com') || u.hostname.includes('youtu.be')) {
+      const id = u.hostname.includes('youtu.be')
+        ? u.pathname.slice(1)
+        : u.searchParams.get('v')
+      if (id) return `https://www.youtube.com/embed/${id}`
+    }
+  } catch {}
+  return null
+}
+
+// ── Video-Popup ──────────────────────────────────────────────
+function VideoModal({ url, onClose }) {
+  const embedUrl = getEmbedUrl(url)
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+         onClick={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-sm overflow-hidden shadow-2xl"
+           style={{ maxHeight: '90dvh' }}
+           onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3">
+          <span className="text-sm font-semibold text-gray-700">Vorschau</span>
+          <button onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Embed iframe */}
+        {embedUrl ? (
+          <iframe
+            src={embedUrl}
+            className="w-full border-0"
+            style={{ height: '560px' }}
+            allow="autoplay; encrypted-media; picture-in-picture"
+            allowFullScreen
+          />
+        ) : (
+          <div className="px-6 py-10 text-center space-y-3">
+            <p className="text-gray-500 text-sm">Vorschau nicht verfügbar für diesen Link.</p>
+            <a href={url} target="_blank" rel="noreferrer"
+              className="inline-block px-5 py-2 bg-violet-600 text-white text-sm font-medium rounded-full hover:bg-violet-700">
+              Im Browser öffnen ↗
+            </a>
+          </div>
+        )}
+
+        {/* Footer */}
+        {embedUrl && (
+          <div className="px-4 py-3 border-t border-gray-100 text-center">
+            <a href={url} target="_blank" rel="noreferrer"
+              className="text-xs text-gray-400 hover:text-violet-600 transition-colors">
+              Im Browser öffnen ↗
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Inline-Formular (Neu + Bearbeiten) ──────────────────────
 function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
   const [f, setF] = useState(initial)
@@ -166,6 +245,7 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
 function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, busyId, showWeekBadge, isIdeaTab }) {
   const nxt = nextWeekOf(week, year)
   const [confirmDel, setConfirmDel] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
   const busy = busyId === p.id
 
   function cycleStatus() {
@@ -237,14 +317,16 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 <p className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap">{p.description}</p>
               )}
               {p.source_link && (
-                <a href={p.source_link} target="_blank" rel="noreferrer"
-                  className="inline-flex items-center gap-1 mt-1.5 text-xs text-violet-600 hover:text-violet-800 hover:underline font-medium">
+                <button onClick={() => setShowPreview(true)}
+                  className="inline-flex items-center gap-1 mt-1.5 text-xs text-violet-600 hover:text-violet-800 font-medium">
                   <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                   </svg>
-                  Beispielvideo
-                </a>
+                  Beispielvideo ansehen
+                </button>
               )}
+              {showPreview && <VideoModal url={p.source_link} onClose={() => setShowPreview(false)} />}
             </div>
 
             {/* Right: status + push outlined pill */}
