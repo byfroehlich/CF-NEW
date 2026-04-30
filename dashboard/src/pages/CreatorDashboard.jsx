@@ -93,26 +93,41 @@ function AuftraegeTab({ week, year }) {
   )
 }
 
+const STATUS_CYCLE = ['idea', 'planned', 'filming', 'done']
+
+function nextWeekOf(week, year) {
+  if (week >= 52) return { week: 1, year: year + 1 }
+  return { week: week + 1, year }
+}
+
 // ── Mein Content Tab ─────────────────────────────────────────
 function MeinContentTab({ week, year }) {
   const qc = useQueryClient()
   const [platform, setPlatform] = useState('Alle')
-  const [soloFilter, setSoloFilter] = useState('Alle')
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ platform:'IG', title:'', description:'', status:'idea', visible_to_agency: false })
+  const [form, setForm] = useState({ platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false })
 
   const { data: plans = [], isLoading } = useQuery({
     queryKey: ['plans-creator', week, year, platform],
     queryFn: () => getContentPlans({ week, year, ...(platform !== 'Alle' && { platform }) })
   })
 
+  // Stat-Zahlen lokal berechnen (kein extra API-Call nötig)
+  const gesamt  = plans.length
+  const offen   = plans.filter(p => p.status !== 'done').length
+  const erledigt = plans.filter(p => p.status === 'done').length
+
   const createMut = useMutation({
     mutationFn: data => createContentPlan({ ...data, week_number: week, year }),
-    onSuccess: () => { qc.invalidateQueries(['plans-creator']); setShowForm(false); setForm({ platform:'IG', title:'', description:'', status:'idea', visible_to_agency: false }) }
+    onSuccess: () => {
+      qc.invalidateQueries(['plans-creator'])
+      setShowForm(false)
+      setForm({ platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false })
+    }
   })
 
-  const toggleVisible = useMutation({
-    mutationFn: ({ id, visible_to_agency }) => updateContentPlan(id, { visible_to_agency }),
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
     onSuccess: () => qc.invalidateQueries(['plans-creator'])
   })
 
@@ -121,24 +136,40 @@ function MeinContentTab({ week, year }) {
     onSuccess: () => qc.invalidateQueries(['plans-creator'])
   })
 
+  function cycleStatus(plan) {
+    const idx = STATUS_CYCLE.indexOf(plan.status)
+    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
+    updateMut.mutate({ id: plan.id, status: next })
+  }
+
+  function pushToNextWeek(plan) {
+    const { week: nw, year: ny } = nextWeekOf(week, year)
+    createContentPlan({
+      platform: plan.platform,
+      title: plan.title,
+      description: plan.description,
+      status: 'idea',
+      visible_to_agency: false,
+      week_number: nw,
+      year: ny,
+    }).then(() => qc.invalidateQueries(['plans-creator']))
+  }
+
   return (
     <div className="space-y-5">
-      {/* Plattform-Filter */}
-      <div className="flex gap-2 flex-wrap">
-        {['Alle','IG','TK','OF','FL','ML'].map(p => (
-          <button key={p} onClick={() => setPlatform(p)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform===p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {p}
-          </button>
-        ))}
+      {/* Stat-Karten */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Gesamt"   value={gesamt}   color="gray" />
+        <StatCard label="Offen"    value={offen}    color="red" />
+        <StatCard label="Erledigt" value={erledigt} color="green" />
       </div>
 
-      {/* Solo/Partner Filter */}
-      <div className="flex gap-2">
-        {['Alle','Solo','Partner'].map(f => (
-          <button key={f} onClick={() => setSoloFilter(f)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${soloFilter===f ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {f === 'Solo' ? '👤 Solo' : f === 'Partner' ? '👥 Partner' : f}
+      {/* Plattform-Filter */}
+      <div className="flex gap-2 flex-wrap">
+        {['Alle', 'IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
+          <button key={p} onClick={() => setPlatform(p)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {p}
           </button>
         ))}
       </div>
@@ -157,9 +188,9 @@ function MeinContentTab({ week, year }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Plattform *</label>
             <div className="flex gap-2 flex-wrap">
-              {['IG','TK','OF','FL','ML'].map(p => (
-                <button key={p} type="button" onClick={() => setForm(f=>({...f,platform:p}))}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.platform===p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+              {['IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
+                <button key={p} type="button" onClick={() => setForm(f => ({ ...f, platform: p }))}
+                  className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.platform === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
                   {p}
                 </button>
               ))}
@@ -167,23 +198,14 @@ function MeinContentTab({ week, year }) {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Titel</label>
-            <input value={form.title} onChange={e=>setForm(f=>({...f,title:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Ideen-Titel…" />
+            <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Ideen-Titel…" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
-            <textarea rows={3} value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Was ist die Idee?" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-            <select value={form.status} onChange={e=>setForm(f=>({...f,status:e.target.value}))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
-              <option value="idea">Idee</option>
-              <option value="planned">Geplant</option>
-              <option value="filming">Am Filmen</option>
-              <option value="done">Fertig</option>
-            </select>
+            <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Was ist die Idee?" />
           </div>
           <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" checked={form.visible_to_agency} onChange={e=>setForm(f=>({...f,visible_to_agency:e.target.checked}))} className="rounded" />
+            <input type="checkbox" checked={form.visible_to_agency} onChange={e => setForm(f => ({ ...f, visible_to_agency: e.target.checked }))} className="rounded" />
             Für Agentur freigeben
           </label>
           <div className="flex gap-3">
@@ -205,22 +227,65 @@ function MeinContentTab({ week, year }) {
         </div>
       ) : (
         <div className="space-y-3">
-          {plans.map(p => (
-            <div key={p.id} className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
-              <div className="flex items-start justify-between">
-                <div>
-                  <span className="text-xs font-semibold text-gray-500 uppercase">{p.platform}</span>
-                  {p.title && <p className="text-sm font-medium text-gray-900 mt-0.5">{p.title}</p>}
-                  {p.description && <p className="text-xs text-gray-500 mt-0.5">{p.description}</p>}
+          {plans.map((p, idx) => (
+            <div key={p.id} className={`bg-white rounded-xl border p-4 space-y-3 transition-opacity ${p.status === 'done' ? 'border-green-200 opacity-75' : 'border-gray-200'}`}>
+              {/* Kopfzeile */}
+              <div className="flex items-start gap-3">
+                {/* Nummer + Abhak-Checkbox */}
+                <label className="flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer pt-0.5">
+                  <span className="text-xs font-bold text-gray-300 leading-none">{idx + 1}</span>
+                  <input
+                    type="checkbox"
+                    checked={p.status === 'done'}
+                    onChange={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'idea' : 'done' })}
+                    className="w-4 h-4 rounded accent-green-500 cursor-pointer"
+                  />
+                </label>
+
+                {/* Inhalt */}
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
+                  {p.title && (
+                    <p className={`text-sm font-semibold mt-0.5 truncate ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                      {p.title}
+                    </p>
+                  )}
+                  {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>}
                 </div>
-                <span className={`text-xs px-2 py-1 rounded-full font-medium ${PLAN_COLORS[p.status]}`}>{PLAN_STATUS[p.status]}</span>
+
+                {/* Status-Badge — Klick wechselt zum nächsten Status */}
+                <button
+                  onClick={() => cycleStatus(p)}
+                  className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium transition-opacity hover:opacity-80 ${PLAN_COLORS[p.status]}`}
+                  title="Status weiterschalten"
+                >
+                  {PLAN_STATUS[p.status]}
+                </button>
               </div>
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer">
-                  <input type="checkbox" checked={p.visible_to_agency} onChange={e => toggleVisible.mutate({ id: p.id, visible_to_agency: e.target.checked })} className="rounded" />
+
+              {/* Aktionszeile */}
+              <div className="flex items-center justify-between pt-1 border-t border-gray-100 pl-7">
+                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={p.visible_to_agency}
+                    onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
+                    className="rounded"
+                  />
                   Agentur sichtbar
                 </label>
-                <button onClick={() => deleteMut.mutate(p.id)} className="text-xs text-red-400 hover:text-red-600">Löschen</button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => pushToNextWeek(p)}
+                    className="text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                    title={`Auf KW${nextWeekOf(week, year).week} schieben`}
+                  >
+                    → KW{nextWeekOf(week, year).week}
+                  </button>
+                  <button onClick={() => deleteMut.mutate(p.id)} className="text-xs text-red-400 hover:text-red-600">
+                    Löschen
+                  </button>
+                </div>
               </div>
             </div>
           ))}
