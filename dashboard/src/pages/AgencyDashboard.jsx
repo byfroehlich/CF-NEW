@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { logout, getJobs, getJobSummary, getCreators, createCreator, updateCreator, getContentPlans, getChangeRequests, reviewChangeRequest, getCreatorPhotos, uploadFile, addCreatorPhoto, deleteCreatorPhoto, activateCreator, rejectCreator } from '../lib/api.js'
@@ -98,8 +99,8 @@ function Field({ label, value, onChange, type = 'text', placeholder = '', multil
 
 // ── Foto-Upload Sektion ──────────────────────────────────────
 function PhotoLightbox({ url, onClose, onDelete, deleting }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" onClick={onClose}>
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 p-4" onClick={onClose}>
       <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
         <img src={url} className="w-full max-h-[80vh] object-contain rounded-xl" alt="" />
         <div className="flex gap-2 mt-3 justify-end">
@@ -117,7 +118,8 @@ function PhotoLightbox({ url, onClose, onDelete, deleting }) {
           <button onClick={onClose} className="px-3 py-1.5 bg-gray-700 text-white text-xs font-medium rounded-lg hover:bg-gray-600">Schließen</button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
