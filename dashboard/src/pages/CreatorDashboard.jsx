@@ -100,35 +100,79 @@ function nextWeekOf(week, year) {
   return { week: week + 1, year }
 }
 
+// ── Inline-Formular (Neu + Bearbeiten) ──────────────────────
+function PlanForm({ initial, onSave, onCancel, isPending }) {
+  const [f, setF] = useState(initial)
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2 flex-wrap">
+        {['IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
+          <button key={p} type="button" onClick={() => setF(x => ({ ...x, platform: p }))}
+            className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${f.platform === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+            {p}
+          </button>
+        ))}
+      </div>
+      <input
+        value={f.title || ''} onChange={e => setF(x => ({ ...x, title: e.target.value }))}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        placeholder="Titel…"
+      />
+      <textarea
+        rows={2} value={f.description || ''} onChange={e => setF(x => ({ ...x, description: e.target.value }))}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        placeholder="Beschreibung…"
+      />
+      <div className="flex items-center gap-3">
+        <select value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value }))}
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
+          <option value="idea">Idee</option>
+          <option value="planned">Geplant</option>
+          <option value="filming">Am Filmen</option>
+          <option value="done">Fertig</option>
+        </select>
+        <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none whitespace-nowrap">
+          <input type="checkbox" checked={f.visible_to_agency} onChange={e => setF(x => ({ ...x, visible_to_agency: e.target.checked }))} className="rounded" />
+          Agentur sichtbar
+        </label>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onCancel} className="flex-1 py-2 border border-gray-300 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50">Abbrechen</button>
+        <button onClick={() => onSave(f)} disabled={isPending}
+          className="flex-1 py-2 bg-indigo-600 text-white text-xs font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
+          {isPending ? 'Speichern…' : 'Speichern'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Mein Content Tab ─────────────────────────────────────────
 function MeinContentTab({ week, year }) {
   const qc = useQueryClient()
   const [platform, setPlatform] = useState('Alle')
-  const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false })
+  const [showNew, setShowNew] = useState(false)
+  const [editId, setEditId] = useState(null)
+
+  const EMPTY = { platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false }
 
   const { data: plans = [], isLoading } = useQuery({
     queryKey: ['plans-creator', week, year, platform],
     queryFn: () => getContentPlans({ week, year, ...(platform !== 'Alle' && { platform }) })
   })
 
-  // Stat-Zahlen lokal berechnen (kein extra API-Call nötig)
-  const gesamt  = plans.length
-  const offen   = plans.filter(p => p.status !== 'done').length
+  const gesamt   = plans.length
+  const offen    = plans.filter(p => p.status !== 'done').length
   const erledigt = plans.filter(p => p.status === 'done').length
 
   const createMut = useMutation({
     mutationFn: data => createContentPlan({ ...data, week_number: week, year }),
-    onSuccess: () => {
-      qc.invalidateQueries(['plans-creator'])
-      setShowForm(false)
-      setForm({ platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false })
-    }
+    onSuccess: () => { qc.invalidateQueries(['plans-creator']); setShowNew(false) }
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
-    onSuccess: () => qc.invalidateQueries(['plans-creator'])
+    onSuccess: () => { qc.invalidateQueries(['plans-creator']); setEditId(null) }
   })
 
   const deleteMut = useMutation({
@@ -136,24 +180,30 @@ function MeinContentTab({ week, year }) {
     onSuccess: () => qc.invalidateQueries(['plans-creator'])
   })
 
-  function cycleStatus(plan) {
-    const idx = STATUS_CYCLE.indexOf(plan.status)
-    const next = STATUS_CYCLE[(idx + 1) % STATUS_CYCLE.length]
-    updateMut.mutate({ id: plan.id, status: next })
+  function cycleStatus(p) {
+    const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(p.status) + 1) % STATUS_CYCLE.length]
+    updateMut.mutate({ id: p.id, status: next })
   }
 
-  function pushToNextWeek(plan) {
+  async function pushToNextWeek(p) {
     const { week: nw, year: ny } = nextWeekOf(week, year)
-    createContentPlan({
-      platform: plan.platform,
-      title: plan.title,
-      description: plan.description,
+    // Neuen Eintrag erstellen mit Referenz auf Original
+    await createContentPlan({
+      platform: p.platform,
+      title: p.title,
+      description: p.description,
       status: 'idea',
-      visible_to_agency: false,
+      visible_to_agency: p.visible_to_agency,
       week_number: nw,
       year: ny,
-    }).then(() => qc.invalidateQueries(['plans-creator']))
+      carried_over_from: p.id,
+    })
+    // Original als "geschoben" markieren
+    await updateContentPlan(p.id, { pushed_to_week: nw, pushed_to_year: ny })
+    qc.invalidateQueries(['plans-creator'])
   }
+
+  const nxt = nextWeekOf(week, year)
 
   return (
     <div className="space-y-5">
@@ -174,47 +224,24 @@ function MeinContentTab({ week, year }) {
         ))}
       </div>
 
-      {/* Neuer Plan Button */}
-      <button
-        onClick={() => setShowForm(v => !v)}
-        className="w-full py-3 border-2 border-dashed border-indigo-300 rounded-xl text-indigo-500 text-sm font-medium hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
-      >
-        + Neuer Content-Plan
-      </button>
-
-      {/* Formular */}
-      {showForm && (
-        <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Plattform *</label>
-            <div className="flex gap-2 flex-wrap">
-              {['IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
-                <button key={p} type="button" onClick={() => setForm(f => ({ ...f, platform: p }))}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.platform === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
-                  {p}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Titel</label>
-            <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Ideen-Titel…" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Beschreibung</label>
-            <textarea rows={3} value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" placeholder="Was ist die Idee?" />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" checked={form.visible_to_agency} onChange={e => setForm(f => ({ ...f, visible_to_agency: e.target.checked }))} className="rounded" />
-            Für Agentur freigeben
-          </label>
-          <div className="flex gap-3">
-            <button onClick={() => setShowForm(false)} className="flex-1 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50">Abbrechen</button>
-            <button onClick={() => createMut.mutate(form)} disabled={createMut.isPending} className="flex-1 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg hover:bg-indigo-700 disabled:opacity-50">
-              {createMut.isPending ? 'Speichern…' : 'Speichern'}
-            </button>
-          </div>
+      {/* Neuer Plan Button / Formular */}
+      {showNew ? (
+        <div className="bg-white rounded-xl border border-indigo-200 p-4">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Neuer Content-Plan</p>
+          <PlanForm
+            initial={EMPTY}
+            onSave={f => createMut.mutate(f)}
+            onCancel={() => setShowNew(false)}
+            isPending={createMut.isPending}
+          />
         </div>
+      ) : (
+        <button
+          onClick={() => setShowNew(true)}
+          className="w-full py-3 border-2 border-dashed border-indigo-300 rounded-xl text-indigo-500 text-sm font-medium hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
+        >
+          + Neuer Content-Plan
+        </button>
       )}
 
       {/* Pläne Liste */}
@@ -228,65 +255,93 @@ function MeinContentTab({ week, year }) {
       ) : (
         <div className="space-y-3">
           {plans.map((p, idx) => (
-            <div key={p.id} className={`bg-white rounded-xl border p-4 space-y-3 transition-opacity ${p.status === 'done' ? 'border-green-200 opacity-75' : 'border-gray-200'}`}>
-              {/* Kopfzeile */}
-              <div className="flex items-start gap-3">
-                {/* Nummer + Abhak-Checkbox */}
-                <label className="flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer pt-0.5">
-                  <span className="text-xs font-bold text-gray-300 leading-none">{idx + 1}</span>
-                  <input
-                    type="checkbox"
-                    checked={p.status === 'done'}
-                    onChange={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'idea' : 'done' })}
-                    className="w-4 h-4 rounded accent-green-500 cursor-pointer"
-                  />
-                </label>
-
-                {/* Inhalt */}
-                <div className="flex-1 min-w-0">
-                  <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
-                  {p.title && (
-                    <p className={`text-sm font-semibold mt-0.5 truncate ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                      {p.title}
-                    </p>
-                  )}
-                  {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>}
+            <div key={p.id} className={`bg-white rounded-xl border p-4 space-y-3 transition-opacity ${
+              p.status === 'done' ? 'border-green-200 opacity-75' :
+              p.carried_over_from ? 'border-amber-200' :
+              'border-gray-200'
+            }`}>
+              {/* Übertrag-Banner */}
+              {p.carried_over_from && (
+                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5 -mb-1">
+                  <span>↩</span>
+                  <span className="font-medium">Übertrag aus vorheriger Woche</span>
                 </div>
+              )}
 
-                {/* Status-Badge — Klick wechselt zum nächsten Status */}
-                <button
-                  onClick={() => cycleStatus(p)}
-                  className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium transition-opacity hover:opacity-80 ${PLAN_COLORS[p.status]}`}
-                  title="Status weiterschalten"
-                >
-                  {PLAN_STATUS[p.status]}
-                </button>
-              </div>
+              {editId === p.id ? (
+                /* Bearbeitungs-Formular inline */
+                <PlanForm
+                  initial={{ platform: p.platform, title: p.title || '', description: p.description || '', status: p.status, visible_to_agency: p.visible_to_agency }}
+                  onSave={f => updateMut.mutate({ id: p.id, ...f })}
+                  onCancel={() => setEditId(null)}
+                  isPending={updateMut.isPending}
+                />
+              ) : (
+                <>
+                  {/* Kopfzeile */}
+                  <div className="flex items-start gap-3">
+                    {/* Nummer + Checkbox */}
+                    <label className="flex-shrink-0 flex flex-col items-center gap-1 cursor-pointer pt-0.5">
+                      <span className="text-xs font-bold text-gray-300 leading-none">{idx + 1}</span>
+                      <input
+                        type="checkbox"
+                        checked={p.status === 'done'}
+                        onChange={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'idea' : 'done' })}
+                        className="w-4 h-4 rounded accent-green-500 cursor-pointer"
+                      />
+                    </label>
 
-              {/* Aktionszeile */}
-              <div className="flex items-center justify-between pt-1 border-t border-gray-100 pl-7">
-                <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={p.visible_to_agency}
-                    onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
-                    className="rounded"
-                  />
-                  Agentur sichtbar
-                </label>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => pushToNextWeek(p)}
-                    className="text-xs text-indigo-500 hover:text-indigo-700 font-medium"
-                    title={`Auf KW${nextWeekOf(week, year).week} schieben`}
-                  >
-                    → KW{nextWeekOf(week, year).week}
-                  </button>
-                  <button onClick={() => deleteMut.mutate(p.id)} className="text-xs text-red-400 hover:text-red-600">
-                    Löschen
-                  </button>
-                </div>
-              </div>
+                    {/* Inhalt */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
+                        {p.pushed_to_week && (
+                          <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week} geschoben</span>
+                        )}
+                      </div>
+                      {p.title && (
+                        <p className={`text-sm font-semibold mt-0.5 ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                          {p.title}
+                        </p>
+                      )}
+                      {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{p.description}</p>}
+                    </div>
+
+                    {/* Status-Badge */}
+                    <button
+                      onClick={() => cycleStatus(p)}
+                      className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 ${PLAN_COLORS[p.status]}`}
+                    >
+                      {PLAN_STATUS[p.status]}
+                    </button>
+                  </div>
+
+                  {/* Aktionszeile */}
+                  <div className="flex items-center justify-between pt-1 border-t border-gray-100 pl-7">
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={p.visible_to_agency}
+                        onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
+                        className="rounded"
+                      />
+                      Agentur sichtbar
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => setEditId(p.id)} className="text-xs text-gray-400 hover:text-gray-700">Bearbeiten</button>
+                      {!p.pushed_to_week && (
+                        <button
+                          onClick={() => pushToNextWeek(p)}
+                          className="text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                        >
+                          → KW{nxt.week}
+                        </button>
+                      )}
+                      <button onClick={() => deleteMut.mutate(p.id)} className="text-xs text-red-400 hover:text-red-600">Löschen</button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           ))}
         </div>

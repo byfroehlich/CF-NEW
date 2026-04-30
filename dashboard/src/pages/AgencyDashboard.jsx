@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getCreators, createCreator } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getCreators, createCreator, getContentPlans } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -195,6 +195,72 @@ function CreatorTab() {
   )
 }
 
+const PLAN_STATUS = { idea: 'Idee', planned: 'Geplant', filming: 'Am Filmen', done: 'Fertig' }
+const PLAN_COLORS = { idea: 'bg-gray-100 text-gray-600', planned: 'bg-blue-100 text-blue-700', filming: 'bg-orange-100 text-orange-700', done: 'bg-green-100 text-green-700' }
+
+function KreativTab({ week, year }) {
+  const [platform, setPlatform] = useState('Alle')
+
+  const { data: plans = [], isLoading } = useQuery({
+    queryKey: ['plans-agency', week, year, platform],
+    queryFn: () => getContentPlans({ week, year, ...(platform !== 'Alle' && { platform }) })
+  })
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="font-semibold text-gray-900 mb-1">Kreativ-Pläne</h2>
+        <p className="text-xs text-gray-400">Nur freigegebene Pläne der Creator</p>
+      </div>
+
+      <div className="flex gap-2 flex-wrap">
+        {['Alle', 'IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
+          <button key={p} onClick={() => setPlatform(p)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform === p ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <p className="text-center text-gray-400 text-sm py-12">Lädt…</p>
+      ) : plans.length === 0 ? (
+        <p className="text-center text-gray-400 text-sm py-12">Keine freigegebenen Pläne für KW{week}.</p>
+      ) : (
+        <div className="space-y-3">
+          {plans.map(p => (
+            <div key={p.id} className={`bg-white rounded-xl border p-4 space-y-2 ${p.carried_over_from ? 'border-amber-200' : 'border-gray-200'}`}>
+              {/* Übertrag-Banner */}
+              {p.carried_over_from && (
+                <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 rounded-lg px-2.5 py-1.5">
+                  <span>↩</span>
+                  <span className="font-semibold">Übertrag aus vorheriger Woche</span>
+                </div>
+              )}
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
+                    <span className="text-xs text-gray-400">{p.artist_name || p.real_name}</span>
+                    {p.pushed_to_week && (
+                      <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week} geschoben</span>
+                    )}
+                  </div>
+                  {p.title && <p className="text-sm font-semibold text-gray-900 mt-0.5">{p.title}</p>}
+                  {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-3">{p.description}</p>}
+                </div>
+                <span className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium ${PLAN_COLORS[p.status]}`}>
+                  {PLAN_STATUS[p.status]}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AgencyDashboard() {
   const navigate = useNavigate()
   const { week: cw, year: cy } = getCurrentWeek()
@@ -232,7 +298,7 @@ export default function AgencyDashboard() {
       <div className="max-w-6xl mx-auto px-6 py-6">
         {activeTab === 'Aufträge'  && <AuftraegeTab week={week} year={year} />}
         {activeTab === 'Creator'   && <CreatorTab />}
-        {activeTab === 'Kreativ'   && <p className="text-center text-gray-400 py-12">Kreativ-Pläne folgen.</p>}
+        {activeTab === 'Kreativ'   && <KreativTab week={week} year={year} />}
         {activeTab === 'Statistik' && <p className="text-center text-gray-400 py-12">Statistik folgt.</p>}
       </div>
     </div>
