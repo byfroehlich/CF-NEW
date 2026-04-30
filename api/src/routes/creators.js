@@ -17,11 +17,26 @@ router.get('/me', requireAnyRole, async (req, res) => {
   }
   try {
     const [creator] = await sql`
-      SELECT id, agency_id, artist_name, photo_url, platforms, active, created_at
+      SELECT id, agency_id, artist_name, photo_url, contact_email, phone, platforms, active, created_at
       FROM creators WHERE id = ${req.user.creator_id} AND deleted_at IS NULL
     `
     if (!creator) return res.status(404).json({ error: 'Creator nicht gefunden' })
     res.json(creator)
+  } catch (err) {
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// PATCH /api/v1/creators/me/photo — Creator: eigenes Profilfoto setzen (kein Approval nötig)
+router.patch('/me/photo', requireAnyRole, async (req, res) => {
+  if (req.user.role !== 'creator') return res.status(403).json({ error: 'Nur für Creator' })
+  if (!req.user.creator_id) return res.status(400).json({ error: 'Kein Creator verknüpft' })
+  const { photo_url } = req.body
+  if (!photo_url) return res.status(400).json({ error: 'Foto fehlt' })
+  if (photo_url.length > 800000) return res.status(400).json({ error: 'Foto zu groß (max ~600KB)' })
+  try {
+    await sql`UPDATE creators SET photo_url = ${photo_url} WHERE id = ${req.user.creator_id}`
+    res.json({ ok: true })
   } catch (err) {
     res.status(500).json({ error: 'Serverfehler' })
   }

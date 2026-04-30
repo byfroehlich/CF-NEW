@@ -72,4 +72,11 @@ export const getContentPlanStats = params => api.get('/api/v1/content-plans/stat
 export const getLogs = params => api.get('/api/v1/logs', { params }).then(r => r.data)
 export const getLogSummary = () => api.get('/api/v1/logs/summary').then(r => r.data)
 
+// Change Requests
+export const getChangeRequests  = ()         => api.get('/api/v1/change-requests').then(r => r.data)
+export const createChangeRequest = data      => api.post('/api/v1/change-requests', data).then(r => r.data)
+export const reviewChangeRequest = (id, data) => api.patch(`/api/v1/change-requests/${id}`, data).then(r => r.data)
+export const updateMyPhoto = photo_url       => api.patch('/api/v1/creators/me/photo', { photo_url }).then(r => r.data)
+export const updateCreatorPhoto = (id, photo_url) => api.patch(`/api/v1/creators/${id}`, { photo_url }).then(r => r.data)
+
 export default api

@@ -151,6 +151,23 @@ CREATE TABLE IF NOT EXISTS content_plans (
   created_at        TIMESTAMPTZ DEFAULT now()
 );
 
+-- ── Change Requests ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS change_requests (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id   UUID REFERENCES creators(id),
+  agency_id    UUID REFERENCES agencies(id),
+  fields       JSONB NOT NULL,
+  status       TEXT DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  note         TEXT,
+  requested_at TIMESTAMPTZ DEFAULT now(),
+  reviewed_at  TIMESTAMPTZ,
+  reviewed_by  UUID REFERENCES users(id),
+  deleted_at   TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_change_requests_creator ON change_requests(creator_id) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_change_requests_agency  ON change_requests(agency_id, status) WHERE deleted_at IS NULL;
+
 -- ── System Logs ─────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS logs (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
