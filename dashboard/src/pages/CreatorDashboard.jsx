@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getJobStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -43,7 +43,7 @@ function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
 
       {/* Pill-Tabs */}
       <div className="max-w-2xl mx-auto mt-4 flex gap-2">
-        {['Aufträge','Mein Content'].map(t => (
+        {['Aufträge','Mein Content','Statistik'].map(t => (
           <button key={t} onClick={() => {/* handled by parent */}}
             data-tab={t}
             className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${tab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
@@ -295,6 +295,145 @@ function MeinContentTab({ week, year }) {
   )
 }
 
+// ── Statistik Tab ────────────────────────────────────────────
+const PERIOD_LABELS = { month: 'Monat', quarter: 'Quartal', half: 'Halbjahr', year: 'Jahr' }
+const MONTH_NAMES = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
+
+function Bar({ value, max, color = 'bg-indigo-500' }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 bg-gray-100 rounded-full h-2">
+        <div className={`${color} h-2 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs text-gray-500 w-6 text-right">{value}</span>
+    </div>
+  )
+}
+
+function StatistikTab({ week, year }) {
+  const [period, setPeriod] = useState('month')
+  const [platform, setPlatform] = useState('Alle')
+
+  const pf = platform !== 'Alle' ? platform : undefined
+
+  const { data: summary } = useQuery({
+    queryKey: ['summary-creator', week, year],
+    queryFn: () => getJobSummary({ week, year })
+  })
+  const { data: weekJobs = [] } = useQuery({
+    queryKey: ['jobs-creator', week, year, 'Alle'],
+    queryFn: () => getJobs({ week, year })
+  })
+  const { data: stats } = useQuery({
+    queryKey: ['stats-creator', pf],
+    queryFn: () => getJobStats({ platform: pf })
+  })
+
+  const periodValue = stats ? (stats[`${period}_count`] ?? 0) : null
+  const maxPlatform = stats?.by_platform?.length > 0 ? Math.max(...stats.by_platform.map(p => p.count)) : 1
+  const maxMonth    = stats?.by_month?.length    > 0 ? Math.max(...stats.by_month.map(m => m.count))    : 1
+
+  const platformColors = { IG:'bg-pink-400', TK:'bg-gray-800', OF:'bg-blue-500', FL:'bg-green-500', ML:'bg-purple-500', OTHER:'bg-gray-400' }
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Wochenübersicht ─────────────────────────────── */}
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">KW {week} · {year}</p>
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <StatCard label="Gesamt"   value={summary?.total}       color="gray" />
+          <StatCard label="Offen"    value={summary?.open}        color="red" />
+          <StatCard label="Erledigt" value={summary?.confirmed}   color="green" />
+        </div>
+        {weekJobs.length > 0 ? (
+          <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
+            {weekJobs.map(j => (
+              <div key={j.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-gray-400 w-8">{j.platform}</span>
+                  {j.source_link && <a href={j.source_link} target="_blank" rel="noreferrer" className="text-xs text-violet-500 hover:underline truncate max-w-[120px]">Link</a>}
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[j.status]}`}>{STATUS_LABELS[j.status]}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-center text-gray-400 text-xs py-4">Keine Jobs diese Woche</p>
+        )}
+      </div>
+
+      {/* ── Zeitraum-Statistik ───────────────────────────── */}
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Zeitraum</p>
+
+        {/* Platform-Filter */}
+        <div className="flex gap-2 flex-wrap mb-4">
+          {['Alle','IG','TK','OF','FL','ML'].map(p => (
+            <button key={p} onClick={() => setPlatform(p)}
+              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              {p}
+            </button>
+          ))}
+        </div>
+
+        {/* Zeitraum-Auswahl + Zahl */}
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          {Object.entries(PERIOD_LABELS).map(([key, label]) => (
+            <button key={key} onClick={() => setPeriod(key)}
+              className={`rounded-xl p-3 text-center border transition-all ${period === key ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-indigo-300'}`}>
+              <div className={`text-2xl font-bold ${period === key ? 'text-white' : 'text-gray-900'}`}>
+                {stats ? (stats[`${key}_count`] ?? 0) : '–'}
+              </div>
+              <div className={`text-xs mt-0.5 ${period === key ? 'text-indigo-100' : 'text-gray-400'}`}>{label}</div>
+            </button>
+          ))}
+        </div>
+
+        {/* Plattform-Verteilung (Jahresbasis) */}
+        {stats?.by_platform?.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 mb-4">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plattformen · {new Date().getFullYear()}</p>
+            {stats.by_platform.map(p => (
+              <div key={p.platform}>
+                <div className="flex justify-between text-xs text-gray-600 mb-1">
+                  <span className="font-medium">{p.platform}</span>
+                </div>
+                <Bar value={p.count} max={maxPlatform} color={platformColors[p.platform] || 'bg-indigo-400'} />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Monatsverlauf */}
+        {stats?.by_month?.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Monatsverlauf · {new Date().getFullYear()}</p>
+            {stats.by_month.map(m => {
+              const monthIdx = parseInt(m.month.split('-')[1]) - 1
+              return (
+                <div key={m.month}>
+                  <div className="text-xs text-gray-500 mb-1">{MONTH_NAMES[monthIdx]}</div>
+                  <Bar value={m.count} max={maxMonth} />
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {!stats && <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>}
+        {stats && stats.year_count === 0 && (
+          <div className="text-center py-8">
+            <div className="text-3xl mb-2">📊</div>
+            <p className="text-gray-400 text-sm">Noch keine Daten für {new Date().getFullYear()}</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Hauptkomponente ──────────────────────────────────────────
 export default function CreatorDashboard() {
   const navigate = useNavigate()
@@ -330,7 +469,7 @@ export default function CreatorDashboard() {
         </div>
         {/* Pill-Tabs */}
         <div className="max-w-2xl mx-auto mt-4 flex gap-2">
-          {['Aufträge','Mein Content'].map(t => (
+          {['Aufträge','Mein Content','Statistik'].map(t => (
             <button key={t} onClick={() => setActiveTab(t)}
               className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
               {t}
@@ -342,6 +481,7 @@ export default function CreatorDashboard() {
       <div className="max-w-2xl mx-auto px-6 py-6">
         {activeTab === 'Aufträge'    && <AuftraegeTab week={week} year={year} />}
         {activeTab === 'Mein Content' && <MeinContentTab week={week} year={year} />}
+        {activeTab === 'Statistik'   && <StatistikTab week={week} year={year} />}
       </div>
     </div>
   )

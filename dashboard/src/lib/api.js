@@ -43,6 +43,7 @@ export const logout = () => {
 // Jobs
 export const getJobs = params => api.get('/api/v1/jobs', { params }).then(r => r.data)
 export const getJobSummary = params => api.get('/api/v1/jobs/summary', { params }).then(r => r.data)
+export const getJobStats   = params => api.get('/api/v1/jobs/stats',   { params }).then(r => r.data)
 export const updateJobStatus = (id, status, note) =>
   api.patch(`/api/v1/jobs/${id}/status`, { status, note }).then(r => r.data)
 export const createJob = data => api.post('/api/v1/jobs', data).then(r => r.data)

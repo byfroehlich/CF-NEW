@@ -59,6 +59,102 @@ router.get('/', requireAnyRole, async (req, res) => {
   }
 })
 
+// GET /api/v1/jobs/stats — Zeitraum-Statistik für Creator/Agentur/Admin
+router.get('/stats', requireAnyRole, async (req, res) => {
+  const { platform } = req.query
+  const pf = platform && platform !== 'Alle' ? platform : null
+  try {
+    let totals, byPlatform, byMonth
+
+    if (req.user.role === 'creator') {
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM jobs
+        WHERE creator_id = ${req.user.creator_id} AND deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count
+        FROM jobs
+        WHERE creator_id = ${req.user.creator_id} AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM jobs
+        WHERE creator_id = ${req.user.creator_id} AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    } else if (req.user.role === 'agency') {
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM jobs
+        WHERE agency_id = ${req.user.agency_id} AND deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count
+        FROM jobs
+        WHERE agency_id = ${req.user.agency_id} AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM jobs
+        WHERE agency_id = ${req.user.agency_id} AND deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    } else {
+      ;[totals] = await sql`
+        SELECT
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('month',   now()))::int AS month_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('quarter', now()))::int AS quarter_count,
+          COUNT(*) FILTER (WHERE created_at >= CASE WHEN EXTRACT(MONTH FROM now()) <= 6
+            THEN DATE_TRUNC('year', now())
+            ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
+          COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
+        FROM jobs WHERE deleted_at IS NULL
+          AND (${pf}::text IS NULL OR platform = ${pf})
+      `
+      byPlatform = await sql`
+        SELECT platform, COUNT(*)::int AS count FROM jobs
+        WHERE deleted_at IS NULL AND created_at >= DATE_TRUNC('year', now())
+        GROUP BY platform ORDER BY count DESC
+      `
+      byMonth = await sql`
+        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM jobs WHERE deleted_at IS NULL
+          AND created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        GROUP BY month ORDER BY month
+      `
+    }
+
+    res.json({ ...totals, by_platform: byPlatform, by_month: byMonth })
+  } catch (err) {
+    console.error('Stats error:', err)
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
 // GET /api/v1/jobs/summary — Statistik, alle Rollen
 router.get('/summary', requireAnyRole, async (req, res) => {
   const { week, year, creator_id, agency_id } = req.query
