@@ -105,11 +105,21 @@ function PlanForm({ initial, onSave, onCancel, isPending }) {
   const [f, setF] = useState(initial)
   return (
     <div className="space-y-3">
+      {/* Plattform */}
       <div className="flex gap-2 flex-wrap">
         {['IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
           <button key={p} type="button" onClick={() => setF(x => ({ ...x, platform: p }))}
             className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${f.platform === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
             {p}
+          </button>
+        ))}
+      </div>
+      {/* Solo / Partner */}
+      <div className="flex gap-2">
+        {[['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
+          <button key={val} type="button" onClick={() => setF(x => ({ ...x, partner_type: val }))}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${f.partner_type === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+            {label}
           </button>
         ))}
       </div>
@@ -151,57 +161,66 @@ function PlanForm({ initial, onSave, onCancel, isPending }) {
 function MeinContentTab({ week, year }) {
   const qc = useQueryClient()
   const [platform, setPlatform] = useState('Alle')
+  const [partnerFilter, setPartnerFilter] = useState('Alle')
   const [showNew, setShowNew] = useState(false)
   const [editId, setEditId] = useState(null)
 
-  const EMPTY = { platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false }
+  const EMPTY = { platform: 'IG', title: '', description: '', status: 'idea', visible_to_agency: false, partner_type: 'solo' }
 
-  const { data: plans = [], isLoading, isError, error } = useQuery({
+  const { data: allPlans = [], isLoading, isError, error } = useQuery({
     queryKey: ['plans-creator', week, year, platform],
     queryFn: () => getContentPlans({ week, year, ...(platform !== 'Alle' && { platform }) })
   })
+
+  // Solo/Partner Filter lokal anwenden
+  const plans = partnerFilter === 'Alle' ? allPlans
+    : allPlans.filter(p => p.partner_type === partnerFilter.toLowerCase())
 
   const gesamt   = plans.length
   const offen    = plans.filter(p => p.status !== 'done').length
   const erledigt = plans.filter(p => p.status === 'done').length
 
+  const inv = () => qc.invalidateQueries({ queryKey: ['plans-creator'] })
+
   const createMut = useMutation({
     mutationFn: data => createContentPlan({ ...data, week_number: week, year }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['plans-creator'] }); setShowNew(false) },
+    onSuccess: () => { inv(); setShowNew(false) },
     onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
   })
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['plans-creator'] }); setEditId(null) }
+    onSuccess: () => { inv(); setEditId(null) }
   })
 
   const deleteMut = useMutation({
-    mutationFn: deleteContentPlan,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['plans-creator'] })
+    mutationFn: id => deleteContentPlan(id),
+    onSuccess: inv
   })
+
+  const pushMut = useMutation({
+    mutationFn: async (p) => {
+      const { week: nw, year: ny } = nextWeekOf(week, year)
+      await createContentPlan({
+        platform: p.platform, title: p.title, description: p.description,
+        status: 'idea', visible_to_agency: p.visible_to_agency,
+        partner_type: p.partner_type, week_number: nw, year: ny,
+        carried_over_from: p.id,
+      })
+      await updateContentPlan(p.id, { pushed_to_week: nw, pushed_to_year: ny })
+    },
+    onSuccess: inv,
+    onError: e => alert('Fehler beim Schieben: ' + (e.response?.data?.error || e.message))
+  })
+
+  // Welche Plan-ID gerade in Bearbeitung ist
+  const busyId = (updateMut.isPending && updateMut.variables?.id)
+    || (deleteMut.isPending && deleteMut.variables)
+    || (pushMut.isPending && pushMut.variables?.id)
 
   function cycleStatus(p) {
     const next = STATUS_CYCLE[(STATUS_CYCLE.indexOf(p.status) + 1) % STATUS_CYCLE.length]
     updateMut.mutate({ id: p.id, status: next })
-  }
-
-  async function pushToNextWeek(p) {
-    const { week: nw, year: ny } = nextWeekOf(week, year)
-    // Neuen Eintrag erstellen mit Referenz auf Original
-    await createContentPlan({
-      platform: p.platform,
-      title: p.title,
-      description: p.description,
-      status: 'idea',
-      visible_to_agency: p.visible_to_agency,
-      week_number: nw,
-      year: ny,
-      carried_over_from: p.id,
-    })
-    // Original als "geschoben" markieren
-    await updateContentPlan(p.id, { pushed_to_week: nw, pushed_to_year: ny })
-    qc.invalidateQueries({ queryKey: ['plans-creator'] })
   }
 
   const nxt = nextWeekOf(week, year)
@@ -221,6 +240,16 @@ function MeinContentTab({ week, year }) {
           <button key={p} onClick={() => setPlatform(p)}
             className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
             {p}
+          </button>
+        ))}
+      </div>
+
+      {/* Solo / Partner Filter */}
+      <div className="flex gap-2">
+        {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
+          <button key={val} onClick={() => setPartnerFilter(val)}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${partnerFilter === val ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+            {label}
           </button>
         ))}
       </div>
@@ -291,17 +320,21 @@ function MeinContentTab({ week, year }) {
                       <input
                         type="checkbox"
                         checked={p.status === 'done'}
+                        disabled={busyId === p.id}
                         onChange={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'idea' : 'done' })}
-                        className="w-4 h-4 rounded accent-green-500 cursor-pointer"
+                        className="w-4 h-4 rounded accent-green-500 cursor-pointer disabled:opacity-50"
                       />
                     </label>
 
                     {/* Inhalt */}
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}
+                        </span>
                         {p.pushed_to_week && (
-                          <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week} geschoben</span>
+                          <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week}</span>
                         )}
                       </div>
                       {p.title && (
@@ -315,9 +348,10 @@ function MeinContentTab({ week, year }) {
                     {/* Status-Badge */}
                     <button
                       onClick={() => cycleStatus(p)}
-                      className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 ${PLAN_COLORS[p.status]}`}
+                      disabled={busyId === p.id}
+                      className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 disabled:opacity-50 ${PLAN_COLORS[p.status]}`}
                     >
-                      {PLAN_STATUS[p.status]}
+                      {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : PLAN_STATUS[p.status]}
                     </button>
                   </div>
 
@@ -327,22 +361,36 @@ function MeinContentTab({ week, year }) {
                       <input
                         type="checkbox"
                         checked={p.visible_to_agency}
+                        disabled={busyId === p.id}
                         onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
-                        className="rounded"
+                        className="rounded disabled:opacity-50"
                       />
                       Agentur sichtbar
                     </label>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => setEditId(p.id)} className="text-xs text-gray-400 hover:text-gray-700">Bearbeiten</button>
+                      <button
+                        onClick={() => setEditId(p.id)}
+                        disabled={busyId === p.id}
+                        className="text-xs text-gray-400 hover:text-gray-700 disabled:opacity-40"
+                      >
+                        Bearbeiten
+                      </button>
                       {!p.pushed_to_week && (
                         <button
-                          onClick={() => pushToNextWeek(p)}
-                          className="text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+                          onClick={() => pushMut.mutate(p)}
+                          disabled={pushMut.isPending || busyId === p.id}
+                          className="text-xs text-indigo-500 hover:text-indigo-700 font-medium disabled:opacity-40"
                         >
-                          → KW{nxt.week}
+                          {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
                         </button>
                       )}
-                      <button onClick={() => deleteMut.mutate(p.id)} className="text-xs text-red-400 hover:text-red-600">Löschen</button>
+                      <button
+                        onClick={() => deleteMut.mutate(p.id)}
+                        disabled={busyId === p.id}
+                        className="text-xs text-red-400 hover:text-red-600 disabled:opacity-40"
+                      >
+                        {deleteMut.isPending && deleteMut.variables === p.id ? '…' : 'Löschen'}
+                      </button>
                     </div>
                   </div>
                 </>

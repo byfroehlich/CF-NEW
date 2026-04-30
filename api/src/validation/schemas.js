@@ -105,6 +105,7 @@ export const contentPlanSchema = z.object({
   description: z.string().optional().nullable(),
   status: z.enum(['idea','planned','filming','done']).default('idea'),
   visible_to_agency: z.boolean().default(false),
+  partner_type: z.enum(['solo','partner']).default('solo'),
   carried_over_from: z.string().uuid().optional().nullable(),
 })
 
@@ -114,6 +115,7 @@ export const contentPlanUpdateSchema = z.object({
   status: z.enum(['idea','planned','filming','done']).optional(),
   visible_to_agency: z.boolean().optional(),
   platform: z.enum(['IG','TK','OF','FL','ML','OTHER']).optional(),
+  partner_type: z.enum(['solo','partner']).optional(),
   pushed_to_week: z.number().int().optional().nullable(),
   pushed_to_year: z.number().int().optional().nullable(),
 })

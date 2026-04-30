@@ -67,10 +67,10 @@ router.post('/', requireAnyRole, validate(contentPlanSchema), async (req, res) =
       return res.status(400).json({ error: 'Kein Creator-Account verknüpft' })
     }
 
-    const { week_number, year, platform, title, description, status, visible_to_agency, carried_over_from } = req.body
+    const { week_number, year, platform, title, description, status, visible_to_agency, partner_type, carried_over_from } = req.body
     const [plan] = await sql`
-      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, status, visible_to_agency, carried_over_from)
-      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${status}, ${visible_to_agency}, ${carried_over_from || null})
+      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, status, visible_to_agency, partner_type, carried_over_from)
+      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null})
       RETURNING *
     `
     res.status(201).json(plan)
@@ -102,6 +102,7 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
         status            = COALESCE(${f.status ?? null}, status),
         visible_to_agency = COALESCE(${f.visible_to_agency ?? null}, visible_to_agency),
         platform          = COALESCE(${f.platform ?? null}, platform),
+        partner_type      = COALESCE(${f.partner_type ?? null}, partner_type),
         pushed_to_week    = COALESCE(${f.pushed_to_week ?? null}, pushed_to_week),
         pushed_to_year    = COALESCE(${f.pushed_to_year ?? null}, pushed_to_year)
       WHERE id = ${id}
