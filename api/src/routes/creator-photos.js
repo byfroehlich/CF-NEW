@@ -1,10 +1,20 @@
 import { Router } from 'express'
-import fs from 'fs'
-import path from 'path'
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
 import sql from '../db/client.js'
 import { requireAnyRole, requireAgencyOrAdmin } from '../middleware/auth.js'
 
 const router = Router({ mergeParams: true })
+
+const R2 = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+})
+const BUCKET = process.env.R2_BUCKET || 'creatorflow-uploads'
+const PUBLIC_URL = process.env.R2_PUBLIC_URL
 
 const LIMITS = { profile: 1, role: 5, id_document: 2 }
 
@@ -140,13 +150,13 @@ router.delete('/:photoId', requireAnyRole, async (req, res) => {
     const [photo] = await query
     if (!photo) return res.status(404).json({ error: 'Foto nicht gefunden' })
 
-    // Delete file from disk
+    // Delete file from R2
     try {
-      const UPLOADS_DIR = process.env.UPLOADS_DIR || 'uploads'
-      const urlPath = new URL(photo.url).pathname
-      const filePath = path.join(UPLOADS_DIR, urlPath.replace('/uploads/', ''))
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-    } catch { /* ignore fs errors */ }
+      if (PUBLIC_URL && photo.url?.startsWith(PUBLIC_URL)) {
+        const key = photo.url.slice(PUBLIC_URL.length + 1)
+        await R2.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
+      }
+    } catch { /* ignore R2 errors — DB record already soft-deleted */ }
 
     res.json({ ok: true })
   } catch {
