@@ -5,6 +5,7 @@ import { logout, getJobs, getJobSummary, getCreators, createCreator, getContentP
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
+import PlatformIcon from '../components/PlatformIcon.jsx'
 import WeekNav from '../components/WeekNav.jsx'
 
 function getCurrentWeek() {
@@ -69,7 +70,7 @@ function AuftraegeTab({ week, year }) {
             <div key={j.id} className="px-4 py-3 flex items-center justify-between text-sm">
               <div>
                 <span className="font-medium text-gray-900">{j.artist_name || j.real_name}</span>
-                <span className="text-gray-400 ml-2">{j.platform}</span>
+                <PlatformIcon platform={j.platform} size="badge" className="ml-2" />
               </div>
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${
                 { open:'bg-red-100 text-red-700', in_progress:'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', confirmed:'bg-blue-100 text-blue-700', carried:'bg-yellow-100 text-yellow-700' }[j.status]
@@ -140,10 +141,8 @@ function CreatorTab() {
             <label className="block text-sm font-medium text-gray-700 mb-2">Plattformen *</label>
             <div className="flex gap-2 flex-wrap">
               {['IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
-                <button key={p} type="button" onClick={() => togglePlatform(p)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.platforms.includes(p) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                  {p}
-                </button>
+                <PlatformIcon key={p} platform={p} size="sm" active={form.platforms.includes(p)}
+                  onClick={() => togglePlatform(p)} />
               ))}
             </div>
           </div>
@@ -181,8 +180,8 @@ function CreatorTab() {
                   {c.artist_name && <p className="text-xs text-gray-400">{c.artist_name}</p>}
                 </div>
               </div>
-              <div className="flex gap-1 mt-3 flex-wrap">
-                {c.platforms?.map(p => <span key={p} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{p}</span>)}
+              <div className="flex gap-1.5 mt-3 flex-wrap">
+                {c.platforms?.map(p => <PlatformIcon key={p} platform={p} size="badge" />)}
               </div>
               <div className="mt-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${c.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{c.active ? 'Aktiv' : 'Inaktiv'}</span>
@@ -213,14 +212,7 @@ function KreativTab({ week, year }) {
         <p className="text-xs text-gray-400">Nur freigegebene Pläne der Creator</p>
       </div>
 
-      <div className="flex gap-2 flex-wrap">
-        {['Alle', 'IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
-          <button key={p} onClick={() => setPlatform(p)}
-            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform === p ? 'bg-gray-900 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {p}
-          </button>
-        ))}
-      </div>
+      <PlatformFilter value={platform} onChange={setPlatform} dark />
 
       {isLoading ? (
         <p className="text-center text-gray-400 text-sm py-12">Lädt…</p>
@@ -240,7 +232,7 @@ function KreativTab({ week, year }) {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-bold text-gray-400 uppercase">{p.platform}</span>
+                    <PlatformIcon platform={p.platform} size="badge" />
                     <span className="text-xs text-gray-400">{p.artist_name || p.real_name}</span>
                     {p.pushed_to_week && (
                       <span className="text-xs text-indigo-400 font-medium">→ KW{p.pushed_to_week} geschoben</span>

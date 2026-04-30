@@ -5,6 +5,7 @@ import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getCo
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
+import PlatformIcon from '../components/PlatformIcon.jsx'
 import WeekNav from '../components/WeekNav.jsx'
 
 function getCurrentWeek() {
@@ -80,9 +81,9 @@ function AuftraegeTab({ week, year }) {
         <div className="space-y-3">
           {jobs.map(j => (
             <div key={j.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-              <div>
-                <span className="text-sm font-semibold text-gray-500 uppercase">{j.platform}</span>
-                {j.source_link && <a href={j.source_link} target="_blank" rel="noreferrer" className="ml-2 text-xs text-violet-600 hover:underline">Beispiel</a>}
+              <div className="flex items-center gap-2">
+                <PlatformIcon platform={j.platform} size="sm" />
+                {j.source_link && <a href={j.source_link} target="_blank" rel="noreferrer" className="text-xs text-violet-600 hover:underline">Beispiel</a>}
               </div>
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[j.status]}`}>{STATUS_LABELS[j.status]}</span>
             </div>
@@ -108,10 +109,8 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
       {/* Plattform */}
       <div className="flex gap-2 flex-wrap">
         {['IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
-          <button key={p} type="button" onClick={() => setF(x => ({ ...x, platform: p }))}
-            className={`px-3 py-1 rounded-lg text-xs font-medium border transition-colors ${f.platform === p ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
-            {p}
-          </button>
+          <PlatformIcon key={p} platform={p} size="sm" active={f.platform === p}
+            onClick={() => setF(x => ({ ...x, platform: p }))} />
         ))}
       </div>
       {/* Solo / Partner */}
@@ -213,7 +212,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
             {/* Content */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs font-bold text-gray-400 uppercase tracking-wide">{p.platform}</span>
+                <PlatformIcon platform={p.platform} size="badge" />
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
                   {p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}
                 </span>
@@ -415,14 +414,7 @@ function MeinContentTab({ week, year }) {
       </div>
 
       {/* Filter */}
-      <div className="flex gap-2 flex-wrap">
-        {['Alle', 'IG', 'TK', 'OF', 'FL', 'ML'].map(p => (
-          <button key={p} onClick={() => setPlatform(p)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {p}
-          </button>
-        ))}
-      </div>
+      <PlatformFilter value={platform} onChange={setPlatform} />
       <div className="flex gap-2">
         {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
           <button key={val} onClick={() => setPartnerFilter(val)}
@@ -518,14 +510,7 @@ function StatsSection({ stats, period, setPeriod, platform, setPlatform }) {
   return (
     <div className="space-y-4">
       {/* Plattform-Filter */}
-      <div className="flex gap-2 flex-wrap">
-        {['Alle','IG','TK','OF','FL','ML'].map(p => (
-          <button key={p} onClick={() => setPlatform(p)}
-            className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${platform === p ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-            {p}
-          </button>
-        ))}
-      </div>
+      <PlatformFilter value={platform} onChange={setPlatform} />
 
       {/* Zeitraum-Karten */}
       <div className="grid grid-cols-4 gap-2">
@@ -546,7 +531,9 @@ function StatsSection({ stats, period, setPeriod, platform, setPlatform }) {
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Plattformen · {new Date().getFullYear()}</p>
           {stats.by_platform.map(p => (
             <div key={p.platform}>
-              <div className="text-xs text-gray-600 mb-1 font-medium">{p.platform}</div>
+              <div className="flex items-center gap-1.5 mb-1">
+                <PlatformIcon platform={p.platform} size="badge" />
+              </div>
               <Bar value={p.count} max={maxPlatform} color={PLATFORM_COLORS[p.platform] || 'bg-indigo-400'} />
             </div>
           ))}
@@ -624,7 +611,7 @@ function StatistikTab({ week, year }) {
             {weekJobs.map(j => (
               <div key={j.id} className="px-4 py-2.5 flex items-center justify-between text-sm">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-gray-400 w-8">{j.platform}</span>
+                  <PlatformIcon platform={j.platform} size="badge" />
                   {j.source_link && <a href={j.source_link} target="_blank" rel="noreferrer" className="text-xs text-violet-500 hover:underline truncate max-w-[120px]">Link</a>}
                 </div>
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[j.status]}`}>{STATUS_LABELS[j.status]}</span>

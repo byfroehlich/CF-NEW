@@ -5,6 +5,7 @@ import { logout, getJobs, getJobSummary, getCreators, getAgencies, createCreator
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
+import PlatformIcon from '../components/PlatformIcon.jsx'
 import WeekNav from '../components/WeekNav.jsx'
 
 function getCurrentWeek() {
@@ -71,7 +72,7 @@ function AuftraegeTab({ week, year }) {
             <div key={j.id} className="px-4 py-3 flex items-center justify-between text-sm">
               <div>
                 <span className="font-medium text-gray-900">{j.artist_name || j.real_name}</span>
-                <span className="text-gray-400 ml-2">{j.platform}</span>
+                <PlatformIcon platform={j.platform} size="badge" className="ml-2" />
                 {j.agency_name && <span className="text-gray-400 ml-2 text-xs">· {j.agency_name}</span>}
               </div>
               <span className={`text-xs px-2 py-1 rounded-full font-medium ${
@@ -141,10 +142,8 @@ function CreatorTab() {
             <label className="block text-sm font-medium text-gray-700 mb-2">Plattformen *</label>
             <div className="flex gap-2 flex-wrap">
               {PLATFORMS_MULTI().map(p => (
-                <button key={p} type="button" onClick={() => togglePlatform(p)}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium border transition-colors ${form.platforms.includes(p) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
-                  {p}
-                </button>
+                <PlatformIcon key={p} platform={p} size="sm" active={form.platforms.includes(p)}
+                  onClick={() => togglePlatform(p)} />
               ))}
             </div>
           </div>
@@ -180,8 +179,8 @@ function CreatorTab() {
                   {c.artist_name && <p className="text-xs text-gray-400">{c.artist_name}</p>}
                 </div>
               </div>
-              <div className="flex gap-1 mt-3 flex-wrap">
-                {c.platforms?.map(p => <span key={p} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{p}</span>)}
+              <div className="flex gap-1.5 mt-3 flex-wrap">
+                {c.platforms?.map(p => <PlatformIcon key={p} platform={p} size="badge" />)}
               </div>
               <div className="mt-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full ${c.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{c.active ? 'Aktiv' : 'Inaktiv'}</span>
