@@ -23,13 +23,13 @@ router.get('/', requireAnyRole, async (req, res) => {
       `
       return res.json(photos)
     }
-    // Agency: only own creators, no id_document
+    // Agency: only own creators, all photo types (including id_document for verification)
     if (role === 'agency') {
       const [creator] = await sql`SELECT id FROM creators WHERE id = ${id} AND agency_id = ${agency_id} AND deleted_at IS NULL`
       if (!creator) return res.status(404).json({ error: 'Creator nicht gefunden' })
       const photos = await sql`
         SELECT id, type, url, label, sort_order, created_at
-        FROM creator_photos WHERE creator_id = ${id} AND type != 'id_document' AND deleted_at IS NULL
+        FROM creator_photos WHERE creator_id = ${id} AND deleted_at IS NULL
         ORDER BY type, sort_order, created_at
       `
       return res.json(photos)
@@ -133,7 +133,7 @@ router.delete('/:photoId', requireAnyRole, async (req, res) => {
     } else if (role === 'agency') {
       const [c] = await sql`SELECT id FROM creators WHERE id = ${id} AND agency_id = ${agency_id} AND deleted_at IS NULL`
       if (!c) return res.status(404).json({ error: 'Creator nicht gefunden' })
-      query = sql`UPDATE creator_photos SET deleted_at = now() WHERE id = ${photoId} AND creator_id = ${id} AND type != 'id_document' AND deleted_at IS NULL RETURNING id, url`
+      query = sql`UPDATE creator_photos SET deleted_at = now() WHERE id = ${photoId} AND creator_id = ${id} AND deleted_at IS NULL RETURNING id, url`
     } else {
       query = sql`UPDATE creator_photos SET deleted_at = now() WHERE id = ${photoId} AND creator_id = ${id} AND deleted_at IS NULL RETURNING id, url`
     }
