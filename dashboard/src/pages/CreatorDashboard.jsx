@@ -701,45 +701,51 @@ function MeinContentTab({ week, year }) {
         ))}
       </div>
 
-      {/* Filter + View-Toggle Zeile */}
+      {/* Filter + View-Toggle */}
       <div className="space-y-2">
+        {/* Row 1: Platform filter (scrollable) + view toggle */}
         <div className="flex items-center gap-2">
-          <div className="flex-1"><PlatformFilter value={platform} onChange={setPlatform} /></div>
-          {/* Desktop: + Button */}
+          <div className="flex-1 overflow-x-auto scrollbar-hide">
+            <PlatformFilter value={platform} onChange={setPlatform} />
+          </div>
+          {/* Desktop + button */}
           <button onClick={() => setShowNew(v => !v)}
             className="hidden sm:flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold px-3 py-1.5 rounded-lg border border-violet-200 hover:bg-violet-50 transition-colors flex-shrink-0">
             {showNew ? '✕' : '+ Neu'}
           </button>
-          {/* View Toggle */}
-          <div className="flex gap-1 flex-shrink-0">
+          {/* View toggle pill group */}
+          <div className="flex flex-shrink-0 bg-gray-100 rounded-lg p-0.5 gap-0.5">
             <button onClick={() => setViewMode('list')} title="Listenansicht"
-              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-gray-600'}`}>
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
             </button>
             <button onClick={() => setViewMode('full')} title="Vollansicht"
-              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'full' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-gray-600'}`}>
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'full' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
             </button>
           </div>
         </div>
-        <div className="flex flex-wrap gap-1.5 items-center">
-          {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
-            <button key={val} onClick={() => setPartnerFilter(val)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${partnerFilter === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              {label}
-            </button>
-          ))}
-          {subTab === 'woche' && (
-            <>
-              <span className="w-px h-3.5 bg-gray-200 flex-shrink-0" />
-              {[['Alle','Alle'],['fertig','✓ Fertig'],['geschoben','→ Geschoben']].map(([val, label]) => (
-                <button key={`s-${val}`} onClick={() => setStatusFilter(val)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  {label}
-                </button>
-              ))}
-            </>
-          )}
+        {/* Row 2: Solo/Partner + Status filters — single scrollable row */}
+        <div className="overflow-x-auto scrollbar-hide">
+          <div className="flex gap-1.5 items-center w-max">
+            {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
+              <button key={val} onClick={() => setPartnerFilter(val)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border whitespace-nowrap ${partnerFilter === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                {label}
+              </button>
+            ))}
+            {subTab === 'woche' && (
+              <>
+                <span className="w-px h-3.5 bg-gray-200 flex-shrink-0 mx-0.5" />
+                {[['Alle','Alle'],['fertig','✓ Fertig'],['geschoben','→ Geschoben']].map(([val, label]) => (
+                  <button key={`s-${val}`} onClick={() => setStatusFilter(val)}
+                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border whitespace-nowrap ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                    {label}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -750,20 +756,34 @@ function MeinContentTab({ week, year }) {
         </div>
       )}
 
-      {/* Neuer Eintrag — inline Form */}
-      {showNew && (
-        <div className="bg-white rounded-xl border border-indigo-200 p-4">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-            {subTab === 'ideen' ? 'Neue Idee' : 'Neuer Plan'}
-          </p>
-          <PlanForm
-            initial={subTab === 'ideen' ? EMPTY_IDEA : EMPTY_WEEK}
-            onSave={f => createMut.mutate(f)}
-            onCancel={() => setShowNew(false)}
-            isPending={createMut.isPending}
-            hideStatus={subTab === 'ideen'}
-          />
-        </div>
+      {/* Neuer Eintrag — schwebendes Modal */}
+      {showNew && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+             onClick={() => setShowNew(false)}>
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl overflow-y-auto"
+               style={{ maxHeight: '90dvh' }}
+               onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl sm:rounded-t-2xl">
+              <p className="text-sm font-semibold text-gray-800">
+                {subTab === 'ideen' ? '💡 Neue Idee' : '📅 Neuer Plan'}
+              </p>
+              <button onClick={() => setShowNew(false)}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="px-5 py-4">
+              <PlanForm
+                initial={subTab === 'ideen' ? EMPTY_IDEA : EMPTY_WEEK}
+                onSave={f => createMut.mutate(f)}
+                onCancel={() => setShowNew(false)}
+                isPending={createMut.isPending}
+                hideStatus={subTab === 'ideen'}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Liste */}
@@ -825,10 +845,13 @@ function MeinContentTab({ week, year }) {
         />
       )}
 
-      {/* Mobile FAB */}
+      {/* FAB */}
       <button onClick={() => setShowNew(v => !v)}
-        className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-14 h-14 bg-violet-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl font-light hover:bg-violet-700 active:scale-95 transition-all">
-        {showNew ? '✕' : '+'}
+        className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-14 h-14 bg-gradient-to-br from-violet-500 to-pink-500 text-white rounded-full shadow-lg shadow-violet-500/40 flex items-center justify-center hover:brightness-110 active:scale-95 transition-all">
+        {showNew
+          ? <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          : <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+        }
       </button>
     </div>
   )
