@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto } from '../lib/api.js'
@@ -415,6 +416,146 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
   )
 }
 
+// ── Plan List Row (kompakte Listenansicht) ───────────────────
+function PlanListRow({ p, isIdeaTab, busy, updateMut, onClick }) {
+  return (
+    <div onClick={onClick}
+      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors select-none ${
+        p.status === 'done'    ? 'bg-green-50 border border-green-200' :
+        p.pushed_to_week       ? 'bg-orange-50 border border-orange-200 opacity-75' :
+        'bg-white border border-gray-200 active:bg-gray-50'
+      }`}>
+      {/* Fertig-Toggle */}
+      {!isIdeaTab && (
+        <button onClick={e => { e.stopPropagation(); updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' }) }}
+          disabled={busy}
+          className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all active:scale-95
+            ${p.status === 'done' ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400 bg-white'} disabled:opacity-40`}>
+          {p.status === 'done' && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>}
+        </button>
+      )}
+      {/* Plattform */}
+      <PlatformIcon platform={p.platform} size="badge" />
+      {/* Solo/Partner */}
+      <span className="text-sm flex-shrink-0">{p.partner_type === 'partner' ? '👥' : '👤'}</span>
+      {/* Titel */}
+      <span className={`flex-1 text-sm truncate ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+        {p.title || p.description || <span className="text-gray-300 italic text-xs">Kein Titel</span>}
+      </span>
+      {/* Mini-Badges */}
+      {p.pushed_to_week && <span className="text-xs text-orange-500 font-medium flex-shrink-0">→KW{p.pushed_to_week}</span>}
+      {p.carried_over_from && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
+      {/* Chevron */}
+      <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
+    </div>
+  )
+}
+
+// ── Plan Detail Modal ────────────────────────────────────────
+function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab }) {
+  const [editing, setEditing] = useState(false)
+  const [confirmDel, setConfirmDel] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const nxt = nextWeekOf(week, year)
+  const busy = busyId === p.id
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+         onClick={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl overflow-y-auto"
+           style={{ maxHeight: '90dvh' }} onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl sm:rounded-t-2xl">
+          <div className="flex items-center gap-2">
+            <PlatformIcon platform={p.platform} size="badge" />
+            <span className="text-xs text-gray-500">{p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}</span>
+            {p.carried_over_from && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">↩ Übertrag</span>}
+          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-3">
+          {editing ? (
+            <PlanForm
+              initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo' }}
+              onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
+              onCancel={() => setEditing(false)}
+              isPending={updateMut.isPending}
+            />
+          ) : (
+            <>
+              {p.pushed_to_week && (
+                <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                  <span>→</span><span>Verschoben nach KW{p.pushed_to_week}</span>
+                </div>
+              )}
+              {p.title && <h3 className={`text-base font-semibold ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{p.title}</h3>}
+              {p.description && <p className="text-sm text-gray-600 whitespace-pre-wrap">{p.description}</p>}
+              {p.source_link && (
+                <button onClick={() => setShowPreview(true)} className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-800 font-medium">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  Beispielvideo ansehen
+                </button>
+              )}
+              {showPreview && <VideoModal url={p.source_link} onClose={() => setShowPreview(false)} />}
+
+              {/* Aktionen */}
+              <div className="space-y-2 pt-1">
+                {!isIdeaTab && (
+                  <button onClick={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })} disabled={busy}
+                    className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${p.status === 'done' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-green-500 text-white hover:bg-green-600'}`}>
+                    {p.status === 'done' ? '↩ Als offen markieren' : '✓ Als fertig markieren'}
+                  </button>
+                )}
+                {isIdeaTab ? (
+                  <button onClick={() => { updateMut.mutate({ id: p.id, status: 'planned', week_number: week, year }); onClose() }} disabled={busy}
+                    className="w-full py-2.5 rounded-xl text-sm font-semibold border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-50">
+                    → KW{week} einplanen
+                  </button>
+                ) : p.pushed_to_week ? (
+                  <button onClick={() => { undoPushMut.mutate({ id: p.id, allPlans }); onClose() }} disabled={busy}
+                    className="w-full py-2.5 rounded-xl text-sm font-medium border border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-50">
+                    ↩ Schieben rückgängig
+                  </button>
+                ) : (
+                  <button onClick={() => { pushMut.mutate(p); onClose() }} disabled={busy}
+                    className="w-full py-2.5 rounded-xl text-sm font-medium border border-indigo-300 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50">
+                    → KW{nxt.week} schieben
+                  </button>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                  <input type="checkbox" checked={p.visible_to_agency} disabled={busy}
+                    onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
+                    className="rounded accent-violet-600 disabled:opacity-50" />
+                  Agentur sichtbar
+                </label>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setEditing(true)} className="text-xs text-indigo-600 hover:underline font-medium">Bearbeiten</button>
+                  {confirmDel ? (
+                    <>
+                      <button onClick={() => { deleteMut.mutate(p.id); onClose() }} className="text-xs text-white bg-red-500 px-2.5 py-1 rounded-lg font-bold">Löschen</button>
+                      <button onClick={() => setConfirmDel(false)} className="text-xs text-gray-500">Abbrechen</button>
+                    </>
+                  ) : (
+                    <button onClick={() => setConfirmDel(true)} className="text-xs text-red-400 hover:underline">Löschen</button>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
 // ── Mein Content Tab ─────────────────────────────────────────
 function MeinContentTab({ week, year }) {
   const qc = useQueryClient()
@@ -424,6 +565,8 @@ function MeinContentTab({ week, year }) {
   const [showNew, setShowNew]       = useState(false)
   const [editId, setEditId]         = useState(null)
   const [statusFilter, setStatusFilter] = useState('Alle')
+  const [viewMode, setViewMode]     = useState('list')   // 'list' | 'full'
+  const [detailPlan, setDetailPlan] = useState(null)
 
   const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo' }
   const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo' }
@@ -532,9 +675,27 @@ function MeinContentTab({ week, year }) {
         ))}
       </div>
 
-      {/* Filter — kompakt in einem Block */}
+      {/* Filter + View-Toggle Zeile */}
       <div className="space-y-2">
-        <PlatformFilter value={platform} onChange={setPlatform} />
+        <div className="flex items-center gap-2">
+          <div className="flex-1"><PlatformFilter value={platform} onChange={setPlatform} /></div>
+          {/* Desktop: + Button */}
+          <button onClick={() => setShowNew(v => !v)}
+            className="hidden sm:flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold px-3 py-1.5 rounded-lg border border-violet-200 hover:bg-violet-50 transition-colors flex-shrink-0">
+            {showNew ? '✕' : '+ Neu'}
+          </button>
+          {/* View Toggle */}
+          <div className="flex gap-1 flex-shrink-0">
+            <button onClick={() => setViewMode('list')} title="Listenansicht"
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'list' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-gray-600'}`}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+            </button>
+            <button onClick={() => setViewMode('full')} title="Vollansicht"
+              className={`p-1.5 rounded-lg transition-colors ${viewMode === 'full' ? 'bg-indigo-100 text-indigo-700' : 'text-gray-400 hover:text-gray-600'}`}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+            </button>
+          </div>
+        </div>
         <div className="flex flex-wrap gap-1.5 items-center">
           {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
             <button key={val} onClick={() => setPartnerFilter(val)}
@@ -545,7 +706,7 @@ function MeinContentTab({ week, year }) {
           {subTab === 'woche' && (
             <>
               <span className="w-px h-3.5 bg-gray-200 flex-shrink-0" />
-              {[['Alle','Alle'],['geplant','Geplant'],['fertig','Fertig'],['geschoben','Geschoben']].map(([val, label]) => (
+              {[['Alle','Alle'],['fertig','✓ Fertig'],['geschoben','→ Geschoben']].map(([val, label]) => (
                 <button key={`s-${val}`} onClick={() => setStatusFilter(val)}
                   className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                   {label}
@@ -563,8 +724,8 @@ function MeinContentTab({ week, year }) {
         </div>
       )}
 
-      {/* Neuer Eintrag */}
-      {showNew ? (
+      {/* Neuer Eintrag — inline Form */}
+      {showNew && (
         <div className="bg-white rounded-xl border border-indigo-200 p-4">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
             {subTab === 'ideen' ? 'Neue Idee' : 'Neuer Plan'}
@@ -577,11 +738,6 @@ function MeinContentTab({ week, year }) {
             hideStatus={subTab === 'ideen'}
           />
         </div>
-      ) : (
-        <button onClick={() => setShowNew(true)}
-          className="w-full py-3 border-2 border-dashed border-indigo-300 rounded-xl text-indigo-500 text-sm font-medium hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
-          {subTab === 'ideen' ? '+ Neue Idee' : '+ Neuer Content-Plan'}
-        </button>
       )}
 
       {/* Liste */}
@@ -597,6 +753,19 @@ function MeinContentTab({ week, year }) {
           <p className="text-gray-400 text-sm">
             {subTab === 'ideen' ? 'Noch keine Ideen gespeichert' : `Keine Pläne für KW${week}`}
           </p>
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className="space-y-1.5">
+          {plans.map(p => (
+            <PlanListRow
+              key={p.id}
+              p={p}
+              isIdeaTab={subTab === 'ideen'}
+              busy={busyId === p.id}
+              updateMut={updateMut}
+              onClick={() => setDetailPlan(p)}
+            />
+          ))}
         </div>
       ) : (
         <div className="space-y-3">
@@ -615,6 +784,26 @@ function MeinContentTab({ week, year }) {
           ))}
         </div>
       )}
+
+      {/* Detail Modal (Listenansicht) */}
+      {detailPlan && (
+        <PlanDetailModal
+          p={detailPlan}
+          week={week} year={year}
+          onClose={() => setDetailPlan(null)}
+          updateMut={updateMut} deleteMut={deleteMut}
+          pushMut={pushMut} undoPushMut={undoPushMut}
+          allPlans={allRaw}
+          busyId={busyId}
+          isIdeaTab={subTab === 'ideen'}
+        />
+      )}
+
+      {/* Mobile FAB */}
+      <button onClick={() => setShowNew(v => !v)}
+        className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-14 h-14 bg-violet-600 text-white rounded-full shadow-xl flex items-center justify-center text-2xl font-light hover:bg-violet-700 active:scale-95 transition-all">
+        {showNew ? '✕' : '+'}
+      </button>
     </div>
   )
 }
