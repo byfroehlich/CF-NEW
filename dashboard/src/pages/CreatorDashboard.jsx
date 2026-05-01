@@ -1197,10 +1197,10 @@ export default function CreatorDashboard() {
           </div>
         </div>
         {/* Pill-Tabs */}
-        <div className="max-w-2xl mx-auto mt-4 flex gap-2">
+        <div className="max-w-2xl mx-auto mt-4 flex gap-1 overflow-x-auto px-4 pb-1 scrollbar-hide">
           {['Aufträge','Mein Content','Profil','Statistik'].map(t => (
             <button key={t} onClick={() => setActiveTab(t)}
-              className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+              className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
               {t}
             </button>
           ))}
