@@ -247,7 +247,7 @@ function CreatorCard({ c, changeRequests, qc }) {
   const rolePhotos   = photos.filter(p => p.type === 'role')
   const idPhotos     = photos.filter(p => p.type === 'id_document')
 
-  const needsActivation = ['pending','id_uploaded','ai_checked'].includes(c.activation_status)
+  const needsActivation = !c.activation_status || ['pending','id_uploaded','ai_checked'].includes(c.activation_status)
 
   return (
     <div className={`bg-white rounded-xl border p-4 space-y-3 ${needsActivation ? 'border-blue-200' : 'border-gray-200'}`}>

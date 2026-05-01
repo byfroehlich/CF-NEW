@@ -156,7 +156,7 @@ router.patch('/:id/activate', requireAgencyOrAdmin, async (req, res) => {
   try {
     // Check if ID verification is required
     const [setting] = await sql`SELECT value FROM system_settings WHERE key = 'require_id_verification'`
-    const requireVerification = setting ? setting.value === true : true
+    const requireVerification = setting ? !!setting.value : true
 
     if (requireVerification) {
       // Must have at least one id_document photo

@@ -197,7 +197,7 @@ function AdminCreatorCard({ c, agencies, qc }) {
 
   const age = c.birthday ? Math.floor((Date.now() - new Date(c.birthday)) / 31557600000) : null
   const agencyName = agencies.find(a => a.id === c.agency_id)?.name
-  const needsActivation = ['pending','id_uploaded','ai_checked'].includes(c.activation_status)
+  const needsActivation = !c.activation_status || ['pending','id_uploaded','ai_checked'].includes(c.activation_status)
 
   const { data: photos = [], refetch: refetchPhotos } = useQuery({
     queryKey: ['creator-photos-admin', c.id],
