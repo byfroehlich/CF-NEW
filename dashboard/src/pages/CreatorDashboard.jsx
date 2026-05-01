@@ -476,23 +476,23 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
   const busy = busyId === p.id
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
          onClick={onClose}>
-      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl overflow-y-auto"
-           style={{ maxHeight: '90dvh' }} onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-y-auto"
+           style={{ maxHeight: '85dvh' }} onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl sm:rounded-t-2xl">
-          <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl">
+          <div className="flex items-center gap-2 flex-wrap">
             <PlatformIcon platform={p.platform} size="badge" />
-            <span className="text-xs text-gray-500">{p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}</span>
-            {p.carried_over_from && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">↩ Übertrag</span>}
+            <span className="text-xs font-medium text-gray-500">{p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}</span>
+            {p.carried_over_from && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">↩ Übertrag</span>}
           </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600">
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors flex-shrink-0">
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
           </button>
         </div>
 
-        <div className="px-5 py-4 space-y-3">
+        <div className="px-5 py-5 space-y-4">
           {editing ? (
             <PlanForm
               initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '' }}
@@ -758,12 +758,12 @@ function MeinContentTab({ week, year }) {
 
       {/* Neuer Eintrag — schwebendes Modal */}
       {showNew && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
              onClick={() => setShowNew(false)}>
-          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full sm:max-w-md shadow-2xl overflow-y-auto"
-               style={{ maxHeight: '90dvh' }}
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-y-auto"
+               style={{ maxHeight: '85dvh' }}
                onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl sm:rounded-t-2xl">
+            <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl">
               <p className="text-sm font-semibold text-gray-800">
                 {subTab === 'ideen' ? '💡 Neue Idee' : '📅 Neuer Plan'}
               </p>
@@ -772,7 +772,7 @@ function MeinContentTab({ week, year }) {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
-            <div className="px-5 py-4">
+            <div className="px-5 py-5">
               <PlanForm
                 initial={subTab === 'ideen' ? EMPTY_IDEA : EMPTY_WEEK}
                 onSave={f => createMut.mutate(f)}
