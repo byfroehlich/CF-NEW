@@ -174,10 +174,10 @@ router.post('/', requireAnyRole, validate(contentPlanSchema), async (req, res) =
       agencyId = c?.agency_id ?? null
     }
 
-    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from } = req.body
+    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung } = req.body
     const [plan] = await sql`
-      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from)
-      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null})
+      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung)
+      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null}, ${requisiten || null}, ${kleidung || null})
       RETURNING *
     `
     res.status(201).json(plan)
@@ -214,7 +214,9 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
         week_number       = COALESCE(${f.week_number ?? null}, week_number),
         year              = COALESCE(${f.year ?? null}, year),
         pushed_to_week    = CASE WHEN ${'pushed_to_week' in f}::boolean THEN ${f.pushed_to_week ?? null} ELSE pushed_to_week END,
-        pushed_to_year    = CASE WHEN ${'pushed_to_year' in f}::boolean THEN ${f.pushed_to_year ?? null} ELSE pushed_to_year END
+        pushed_to_year    = CASE WHEN ${'pushed_to_year' in f}::boolean THEN ${f.pushed_to_year ?? null} ELSE pushed_to_year END,
+        requisiten        = COALESCE(${f.requisiten ?? null}, requisiten),
+        kleidung          = COALESCE(${f.kleidung ?? null}, kleidung)
       WHERE id = ${id}
       RETURNING *
     `

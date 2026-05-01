@@ -109,6 +109,8 @@ export const contentPlanSchema = z.object({
   visible_to_agency: z.boolean().default(false),
   partner_type: z.enum(['solo','partner']).default('solo'),
   carried_over_from: z.string().uuid().optional().nullable(),
+  requisiten: z.string().optional().nullable(),
+  kleidung: z.string().optional().nullable(),
 })
 
 export const contentPlanUpdateSchema = z.object({
@@ -123,4 +125,6 @@ export const contentPlanUpdateSchema = z.object({
   year: z.number().int().min(2024).optional(),
   pushed_to_week: z.number().int().optional().nullable(),
   pushed_to_year: z.number().int().optional().nullable(),
+  requisiten: z.string().optional().nullable(),
+  kleidung: z.string().optional().nullable(),
 })

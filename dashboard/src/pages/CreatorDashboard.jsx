@@ -218,6 +218,16 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
         placeholder="Beispiel-Link (https://…)"
       />
+      <input
+        value={f.requisiten || ''} onChange={e => setF(x => ({ ...x, requisiten: e.target.value }))}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        placeholder="Requisiten…"
+      />
+      <input
+        value={f.kleidung || ''} onChange={e => setF(x => ({ ...x, kleidung: e.target.value }))}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        placeholder="Kleidung…"
+      />
       <div className="flex items-center gap-3">
         {!hideStatus && (
           <select value={f.status} onChange={e => setF(x => ({ ...x, status: e.target.value }))}
@@ -268,7 +278,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
       {editId === p.id ? (
         <PlanForm
-          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo' }}
+          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '' }}
           onSave={f => updateMut.mutate({ id: p.id, ...f })}
           onCancel={() => setEditId(null)}
           isPending={updateMut.isPending}
@@ -316,6 +326,12 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
               )}
               {p.description && (
                 <p className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap">{p.description}</p>
+              )}
+              {(p.requisiten || p.kleidung) && (
+                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                  {p.requisiten && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Requisiten:</span> {p.requisiten}</span>}
+                  {p.kleidung && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Kleidung:</span> {p.kleidung}</span>}
+                </div>
               )}
               {p.source_link && (
                 <button onClick={() => setShowPreview(true)}
@@ -479,7 +495,7 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
         <div className="px-5 py-4 space-y-3">
           {editing ? (
             <PlanForm
-              initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo' }}
+              initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '' }}
               onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
               onCancel={() => setEditing(false)}
               isPending={updateMut.isPending}
@@ -493,6 +509,16 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
               )}
               {p.title && <h3 className={`text-base font-semibold ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{p.title}</h3>}
               {p.description && <p className="text-sm text-gray-600 whitespace-pre-wrap">{p.description}</p>}
+              {(p.requisiten || p.kleidung) && (
+                <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-1.5">
+                  {p.requisiten && (
+                    <div className="text-sm"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Requisiten</span>{p.requisiten}</div>
+                  )}
+                  {p.kleidung && (
+                    <div className="text-sm"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Kleidung</span>{p.kleidung}</div>
+                  )}
+                </div>
+              )}
               {p.source_link && (
                 <button onClick={() => setShowPreview(true)} className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-800 font-medium">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -568,8 +594,8 @@ function MeinContentTab({ week, year }) {
   const [viewMode, setViewMode]     = useState('list')   // 'list' | 'full'
   const [detailPlan, setDetailPlan] = useState(null)
 
-  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo' }
-  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo' }
+  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '' }
+  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '' }
 
   // Wochenplan: aktuelle KW
   const { data: weekRaw = [], isLoading: weekLoading, isError: weekError, error: weekErr } = useQuery({

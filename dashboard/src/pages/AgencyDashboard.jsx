@@ -626,6 +626,12 @@ function KreativTab({ week, year }) {
                   </div>
                   {p.title && <p className="text-sm font-semibold text-gray-900 mt-0.5">{p.title}</p>}
                   {p.description && <p className="text-xs text-gray-500 mt-0.5 line-clamp-3">{p.description}</p>}
+                  {(p.requisiten || p.kleidung) && (
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                      {p.requisiten && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Requisiten:</span> {p.requisiten}</span>}
+                      {p.kleidung && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Kleidung:</span> {p.kleidung}</span>}
+                    </div>
+                  )}
                 </div>
                 <span className={`flex-shrink-0 text-xs px-2.5 py-1 rounded-full font-medium ${PLAN_COLORS[p.status]}`}>
                   {PLAN_STATUS[p.status]}
