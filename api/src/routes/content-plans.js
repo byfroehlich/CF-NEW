@@ -53,23 +53,26 @@ router.get('/stats', requireAnyRole, async (req, res) => {
             THEN DATE_TRUNC('year', now())
             ELSE DATE_TRUNC('year', now()) + INTERVAL '6 months' END)::int         AS half_count,
           COUNT(*) FILTER (WHERE created_at >= DATE_TRUNC('year',    now()))::int AS year_count
-        FROM content_plans
-        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
-          AND (${pf}::text IS NULL OR platform = ${pf})
+        FROM content_plans cp JOIN creators c ON c.id = cp.creator_id
+        WHERE (cp.agency_id = ${agencyId}::uuid OR c.agency_id = ${agencyId}::uuid)
+          AND cp.visible_to_agency = true AND cp.deleted_at IS NULL
+          AND (${pf}::text IS NULL OR cp.platform = ${pf})
       `
       byPlatform = await sql`
-        SELECT platform, COUNT(*)::int AS count
-        FROM content_plans
-        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
-          AND created_at >= DATE_TRUNC('year', now())
-        GROUP BY platform ORDER BY count DESC
+        SELECT cp.platform, COUNT(*)::int AS count
+        FROM content_plans cp JOIN creators c ON c.id = cp.creator_id
+        WHERE (cp.agency_id = ${agencyId}::uuid OR c.agency_id = ${agencyId}::uuid)
+          AND cp.visible_to_agency = true AND cp.deleted_at IS NULL
+          AND cp.created_at >= DATE_TRUNC('year', now())
+        GROUP BY cp.platform ORDER BY count DESC
       `
       byMonth = await sql`
-        SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
-        FROM content_plans
-        WHERE agency_id = ${agencyId}::uuid AND visible_to_agency = true AND deleted_at IS NULL
-          AND created_at >= DATE_TRUNC('year', now())
-          AND (${pf}::text IS NULL OR platform = ${pf})
+        SELECT TO_CHAR(DATE_TRUNC('month', cp.created_at), 'YYYY-MM') AS month, COUNT(*)::int AS count
+        FROM content_plans cp JOIN creators c ON c.id = cp.creator_id
+        WHERE (cp.agency_id = ${agencyId}::uuid OR c.agency_id = ${agencyId}::uuid)
+          AND cp.visible_to_agency = true AND cp.deleted_at IS NULL
+          AND cp.created_at >= DATE_TRUNC('year', now())
+          AND (${pf}::text IS NULL OR cp.platform = ${pf})
         GROUP BY month ORDER BY month
       `
     } else {
@@ -126,11 +129,12 @@ router.get('/', requireAnyRole, async (req, res) => {
         ORDER BY cp.created_at DESC
       `
     } else if (req.user.role === 'agency') {
+      const agencyId = req.user.agency_id ?? null
       plans = await sql`
         SELECT cp.*, c.real_name, c.artist_name
         FROM content_plans cp
         JOIN creators c ON c.id = cp.creator_id
-        WHERE cp.agency_id = ${req.user.agency_id ?? null}
+        WHERE (cp.agency_id = ${agencyId} OR c.agency_id = ${agencyId})
           AND cp.visible_to_agency = true
           AND cp.deleted_at IS NULL
           AND (${wk}::int IS NULL OR cp.week_number = ${wk})
@@ -161,10 +165,13 @@ router.get('/', requireAnyRole, async (req, res) => {
 router.post('/', requireAnyRole, validate(contentPlanSchema), async (req, res) => {
   try {
     const creatorId = req.user.creator_id
-    const agencyId = req.user.agency_id
-
     if (req.user.role === 'creator' && !creatorId) {
       return res.status(400).json({ error: 'Kein Creator-Account verknüpft' })
+    }
+    let agencyId = req.user.agency_id
+    if (!agencyId && creatorId) {
+      const [c] = await sql`SELECT agency_id FROM creators WHERE id = ${creatorId} AND deleted_at IS NULL`
+      agencyId = c?.agency_id ?? null
     }
 
     const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from } = req.body
