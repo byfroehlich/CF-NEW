@@ -315,7 +315,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 {showWeekBadge && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-400 font-medium">KW{p.week_number}</span>
                 )}
-                {p.carried_over_from && (
+                {p.carried_over_from && !isTopTab && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">↩ Übertrag</span>
                 )}
               </div>
@@ -441,7 +441,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 }
 
 // ── Plan List Row (kompakte Listenansicht) ───────────────────
-function PlanListRow({ p, isIdeaTab, busy, updateMut, onClick }) {
+function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick }) {
   return (
     <div onClick={onClick}
       className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors select-none ${
@@ -468,7 +468,7 @@ function PlanListRow({ p, isIdeaTab, busy, updateMut, onClick }) {
       </span>
       {/* Mini-Badges */}
       {p.pushed_to_week && <span className="text-xs text-orange-500 font-medium flex-shrink-0">→KW{p.pushed_to_week}</span>}
-      {p.carried_over_from && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
+      {p.carried_over_from && !isTopTab && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
       {p.is_top_video && <span className="text-yellow-500 flex-shrink-0 text-sm">⭐</span>}
       {/* Chevron */}
       <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
@@ -917,6 +917,7 @@ function MeinContentTab({ week, year }) {
               key={p.id}
               p={p}
               isIdeaTab={subTab !== 'woche'}
+              isTopTab={subTab === 'top'}
               busy={busyId === p.id}
               updateMut={updateMut}
               onClick={() => setDetailPlan(p)}
