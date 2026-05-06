@@ -42,6 +42,28 @@ router.post('/', requireAnyRole, async (req, res) => {
   }
 })
 
+// PATCH /api/v1/creator-accounts/:id — umbenennen
+router.patch('/:id', requireAnyRole, async (req, res) => {
+  if (req.user.role !== 'creator') return res.status(403).json({ error: 'Nur Creator' })
+  const creatorId = req.user.creator_id
+  const id = req.params.id
+  const { name } = req.body
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'Name erforderlich' })
+  }
+  try {
+    const [account] = await sql`
+      UPDATE creator_accounts SET name = ${name.trim()}
+      WHERE id = ${id} AND creator_id = ${creatorId}::uuid AND deleted_at IS NULL
+      RETURNING id, name, created_at
+    `
+    if (!account) return res.status(404).json({ error: 'Account nicht gefunden' })
+    res.json(account)
+  } catch (err) {
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
 // DELETE /api/v1/creator-accounts/:id
 router.delete('/:id', requireAnyRole, async (req, res) => {
   if (req.user.role !== 'creator') return res.status(403).json({ error: 'Nur Creator' })

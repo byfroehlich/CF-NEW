@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto, getCreatorAccounts, createCreatorAccount, deleteCreatorAccount } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto, getCreatorAccounts, createCreatorAccount, updateCreatorAccount, deleteCreatorAccount } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -258,6 +258,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
   const [confirmDel, setConfirmDel] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const busy = busyId === p.id
+  const accountName = accounts?.find(a => a.id === p.account_id)?.name
 
   function cycleStatus() {
     const next = STATUS_CYCLE_WEEK[(STATUS_CYCLE_WEEK.indexOf(p.status) + 1) % STATUS_CYCLE_WEEK.length]
@@ -312,6 +313,9 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
                   {p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}
                 </span>
+                {accountName && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium">{accountName}</span>
+                )}
                 {showWeekBadge && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-400 font-medium">KW{p.week_number}</span>
                 )}
@@ -441,7 +445,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 }
 
 // ── Plan List Row (kompakte Listenansicht) ───────────────────
-function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick }) {
+function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, accounts }) {
   return (
     <div onClick={onClick}
       className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors select-none ${
@@ -462,6 +466,12 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick }) {
       <PlatformIcon platform={p.platform} size="badge" />
       {/* Solo/Partner */}
       <span className="text-sm flex-shrink-0">{p.partner_type === 'partner' ? '👥' : '👤'}</span>
+      {/* Account */}
+      {accounts?.find(a => a.id === p.account_id) && (
+        <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium flex-shrink-0 max-w-[80px] truncate">
+          {accounts.find(a => a.id === p.account_id).name}
+        </span>
+      )}
       {/* Titel */}
       <span className={`flex-1 text-sm truncate ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
         {p.title || p.description || <span className="text-gray-300 italic text-xs">Kein Titel</span>}
@@ -606,6 +616,9 @@ function MeinContentTab({ week, year }) {
   const [showNewAccount, setShowNewAccount]        = useState(false)
   const [newAccountName, setNewAccountName]        = useState('')
   const [accountFilter, setAccountFilter]          = useState(null)  // für Ideen + Top
+  const [editAccountMode, setEditAccountMode]      = useState(false)
+  const [renamingId, setRenamingId]                = useState(null)
+  const [renameValue, setRenameValue]              = useState('')
 
   // Accounts laden
   const { data: accounts = [] } = useQuery({ queryKey: ['creator-accounts'], queryFn: getCreatorAccounts })
@@ -613,6 +626,11 @@ function MeinContentTab({ week, year }) {
   const addAccountMut = useMutation({
     mutationFn: name => createCreatorAccount({ name }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['creator-accounts'] }); setNewAccountName(''); setShowNewAccount(false) },
+    onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
+  })
+  const renameAccountMut = useMutation({
+    mutationFn: ({ id, name }) => updateCreatorAccount(id, { name }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['creator-accounts'] }); setRenamingId(null) },
     onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
   })
   const delAccountMut = useMutation({
@@ -623,6 +641,8 @@ function MeinContentTab({ week, year }) {
       if (accountFilter === id) setAccountFilter(null)
     }
   })
+
+  const canCreate = subTab !== 'woche' || selectedAccountId !== null || accounts.length === 0
 
   const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '' }
   const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '' }
@@ -736,18 +756,30 @@ function MeinContentTab({ week, year }) {
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</p>
-          <button onClick={() => setShowNewAccount(v => !v)}
-            className="text-xs text-violet-600 hover:text-violet-800 font-medium">
-            {showNewAccount ? 'Abbrechen' : '+ Neu'}
-          </button>
+          <div className="flex items-center gap-2">
+            {!editAccountMode && (
+              <button onClick={() => setShowNewAccount(v => !v)}
+                className="text-xs text-violet-600 hover:text-violet-800 font-medium">
+                {showNewAccount ? 'Abbrechen' : '+ Neu'}
+              </button>
+            )}
+            {accounts.length > 0 && (
+              <button onClick={() => { setEditAccountMode(v => !v); setRenamingId(null); setShowNewAccount(false) }}
+                className="text-xs text-gray-500 hover:text-gray-700 font-medium">
+                {editAccountMode ? 'Fertig' : 'Bearbeiten'}
+              </button>
+            )}
+          </div>
         </div>
-        {showNewAccount && (
+
+        {showNewAccount && !editAccountMode && (
           <div className="flex gap-2">
             <input
               value={newAccountName}
               onChange={e => setNewAccountName(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && newAccountName.trim()) addAccountMut.mutate(newAccountName.trim()) }}
               placeholder="Account-Name…"
+              autoFocus
               className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
             />
             <button
@@ -758,28 +790,68 @@ function MeinContentTab({ week, year }) {
             </button>
           </div>
         )}
-        <div className="overflow-x-auto scrollbar-hide">
-          <div className="flex gap-1.5 w-max">
-            <button onClick={() => setSelectedAccountId(null)}
-              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${!selectedAccountId ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              Alle
-            </button>
+
+        {editAccountMode ? (
+          /* Edit-Modus: umbenennen + löschen */
+          <div className="space-y-1.5">
             {accounts.map(acc => (
-              <div key={acc.id} className="flex items-center gap-0.5">
-                <button onClick={() => setSelectedAccountId(acc.id === selectedAccountId ? null : acc.id)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${selectedAccountId === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  {acc.name}
-                </button>
-                {selectedAccountId === acc.id && (
-                  <button onClick={() => { if (window.confirm(`"${acc.name}" löschen?`)) delAccountMut.mutate(acc.id) }}
-                    className="text-gray-300 hover:text-red-400 p-0.5 transition-colors" title="Account löschen">
-                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                  </button>
+              <div key={acc.id} className="flex items-center gap-2">
+                {renamingId === acc.id ? (
+                  <>
+                    <input
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && renameValue.trim()) renameAccountMut.mutate({ id: acc.id, name: renameValue.trim() }) }}
+                      autoFocus
+                      className="flex-1 px-2.5 py-1.5 border border-indigo-400 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                    />
+                    <button onClick={() => renameValue.trim() && renameAccountMut.mutate({ id: acc.id, name: renameValue.trim() })}
+                      disabled={renameAccountMut.isPending || !renameValue.trim()}
+                      className="px-2.5 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg disabled:opacity-50">
+                      ✓
+                    </button>
+                    <button onClick={() => setRenamingId(null)}
+                      className="px-2 py-1.5 text-gray-400 hover:text-gray-600 text-xs">
+                      ✕
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button onClick={() => { setRenamingId(acc.id); setRenameValue(acc.name) }}
+                      className="flex-1 text-left px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors">
+                      ✎ {acc.name}
+                    </button>
+                    <button onClick={() => { if (window.confirm(`"${acc.name}" löschen?`)) delAccountMut.mutate(acc.id) }}
+                      className="p-1.5 text-red-300 hover:text-red-500 transition-colors" title="Löschen">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    </button>
+                  </>
                 )}
               </div>
             ))}
           </div>
-        </div>
+        ) : (
+          /* Normal-Modus: Account wählen */
+          <div className="overflow-x-auto scrollbar-hide">
+            <div className="flex gap-1.5 w-max">
+              <button onClick={() => setSelectedAccountId(null)}
+                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${!selectedAccountId ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                Alle
+              </button>
+              {accounts.map(acc => (
+                <button key={acc.id} onClick={() => setSelectedAccountId(acc.id === selectedAccountId ? null : acc.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${selectedAccountId === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  {acc.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Hinweis wenn Alle + Accounts vorhanden + Wochenplan */}
+        {!selectedAccountId && accounts.length > 0 && subTab === 'woche' && (
+          <p className="text-xs text-gray-400 text-center py-1">Account wählen um einen neuen Plan anzulegen</p>
+        )}
       </div>
 
       {/* Unterreiter */}
@@ -816,10 +888,12 @@ function MeinContentTab({ week, year }) {
           <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
             <PlatformFilter value={platform} onChange={setPlatform} />
           </div>
-          <button onClick={() => setShowNew(v => !v)}
-            className="hidden sm:flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold px-3 py-1.5 rounded-lg border border-violet-200 hover:bg-violet-50 transition-colors flex-shrink-0">
-            {showNew ? '✕' : '+ Neu'}
-          </button>
+          {canCreate && (
+            <button onClick={() => setShowNew(v => !v)}
+              className="hidden sm:flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold px-3 py-1.5 rounded-lg border border-violet-200 hover:bg-violet-50 transition-colors flex-shrink-0">
+              {showNew ? '✕' : '+ Neu'}
+            </button>
+          )}
           <div className="flex flex-shrink-0 bg-gray-100 rounded-lg p-0.5 gap-0.5">
             <button onClick={() => setViewMode('list')} title="Listenansicht"
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
@@ -920,6 +994,7 @@ function MeinContentTab({ week, year }) {
               isTopTab={subTab === 'top'}
               busy={busyId === p.id}
               updateMut={updateMut}
+              accounts={accounts}
               onClick={() => setDetailPlan(p)}
             />
           ))}
@@ -959,7 +1034,7 @@ function MeinContentTab({ week, year }) {
       )}
 
       {/* FAB */}
-      {subTab !== 'top' && (
+      {subTab !== 'top' && canCreate && (
         <button onClick={() => setShowNew(v => !v)}
           className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-14 h-14 bg-gradient-to-br from-violet-500 to-pink-500 text-white rounded-full shadow-lg shadow-violet-500/40 flex items-center justify-center hover:brightness-110 active:scale-95 transition-all">
           {showNew
