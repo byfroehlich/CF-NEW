@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto, getCreatorAccounts, createCreatorAccount, deleteCreatorAccount } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -253,7 +253,7 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
 }
 
 // ── Plan-Karte (wiederverwendet in Wochenplan + Ideen) ───────
-function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, showWeekBadge, isIdeaTab }) {
+function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, showWeekBadge, isIdeaTab, isTopTab, accounts }) {
   const nxt = nextWeekOf(week, year)
   const [confirmDel, setConfirmDel] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -392,6 +392,14 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
             </label>
 
             <div className="flex items-center gap-1">
+              {/* Star / Top-Video */}
+              <button onClick={() => updateMut.mutate({ id: p.id, is_top_video: !p.is_top_video })} disabled={busy}
+                className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${p.is_top_video ? 'text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50' : 'text-gray-300 hover:text-yellow-400 hover:bg-yellow-50'}`}
+                title={p.is_top_video ? 'Top-Video entfernen' : 'Als Top-Video markieren'}>
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={p.is_top_video ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+                </svg>
+              </button>
               {/* Edit */}
               <button onClick={() => setEditId(p.id)} disabled={busy}
                 className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 transition-colors"
@@ -461,6 +469,7 @@ function PlanListRow({ p, isIdeaTab, busy, updateMut, onClick }) {
       {/* Mini-Badges */}
       {p.pushed_to_week && <span className="text-xs text-orange-500 font-medium flex-shrink-0">→KW{p.pushed_to_week}</span>}
       {p.carried_over_from && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
+      {p.is_top_video && <span className="text-yellow-500 flex-shrink-0 text-sm">⭐</span>}
       {/* Chevron */}
       <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
     </div>
@@ -585,27 +594,52 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
 // ── Mein Content Tab ─────────────────────────────────────────
 function MeinContentTab({ week, year }) {
   const qc = useQueryClient()
-  const [subTab, setSubTab]         = useState('woche')  // 'woche' | 'ideen'
-  const [platform, setPlatform]     = useState('Alle')
+  const [subTab, setSubTab]               = useState('woche')  // 'woche' | 'ideen' | 'top'
+  const [platform, setPlatform]           = useState('Alle')
   const [partnerFilter, setPartnerFilter] = useState('Alle')
-  const [showNew, setShowNew]       = useState(false)
-  const [editId, setEditId]         = useState(null)
-  const [statusFilter, setStatusFilter] = useState('Alle')
-  const [viewMode, setViewMode]     = useState('list')   // 'list' | 'full'
-  const [detailPlan, setDetailPlan] = useState(null)
+  const [showNew, setShowNew]             = useState(false)
+  const [editId, setEditId]               = useState(null)
+  const [statusFilter, setStatusFilter]   = useState('Alle')
+  const [viewMode, setViewMode]           = useState('list')   // 'list' | 'full'
+  const [detailPlan, setDetailPlan]       = useState(null)
+  const [selectedAccountId, setSelectedAccountId] = useState(null)
+  const [showNewAccount, setShowNewAccount]        = useState(false)
+  const [newAccountName, setNewAccountName]        = useState('')
+  const [accountFilter, setAccountFilter]          = useState(null)  // für Ideen + Top
+
+  // Accounts laden
+  const { data: accounts = [] } = useQuery({ queryKey: ['creator-accounts'], queryFn: getCreatorAccounts })
+
+  const addAccountMut = useMutation({
+    mutationFn: name => createCreatorAccount({ name }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['creator-accounts'] }); setNewAccountName(''); setShowNewAccount(false) },
+    onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
+  })
+  const delAccountMut = useMutation({
+    mutationFn: id => deleteCreatorAccount(id),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['creator-accounts'] })
+      if (selectedAccountId === id) setSelectedAccountId(null)
+      if (accountFilter === id) setAccountFilter(null)
+    }
+  })
 
   const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '' }
   const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '' }
 
-  // Wochenplan: aktuelle KW
+  // Wochenplan: aktuelle KW, gefiltert nach selectedAccountId
   const { data: weekRaw = [], isLoading: weekLoading, isError: weekError, error: weekErr } = useQuery({
-    queryKey: ['plans-creator', week, year, platform],
-    queryFn: () => getContentPlans({ week, year, ...(platform !== 'Alle' && { platform }) })
+    queryKey: ['plans-creator', week, year, platform, selectedAccountId],
+    queryFn: () => getContentPlans({
+      week, year,
+      ...(platform !== 'Alle' && { platform }),
+      ...(selectedAccountId && { account_id: selectedAccountId }),
+    })
   })
 
-  // Ideenspeicher: alle KWs, nur status='idea'
-  const { data: allRaw = [], isLoading: ideasLoading } = useQuery({
-    queryKey: ['plans-creator-ideas', platform],
+  // Alle Pläne (Ideen + Top) — cross-account
+  const { data: allRaw = [], isLoading: allLoading } = useQuery({
+    queryKey: ['plans-creator-all', platform],
     queryFn: () => getContentPlans({ ...(platform !== 'Alle' && { platform }) })
   })
 
@@ -616,21 +650,25 @@ function MeinContentTab({ week, year }) {
     if (statusFilter === 'geschoben') return list.filter(p => !!p.pushed_to_week)
     return list
   }
+  const applyAccountFilter = list => accountFilter ? list.filter(p => p.account_id === accountFilter) : list
 
-  // Wochenplan: nur geplant + fertig (Ideen gehören in den Ideenspeicher)
-  const weekPlans  = applyStatus(applyPartner(weekRaw.filter(p => p.status !== 'idea')))
-  const ideaPlans  = applyPartner(allRaw.filter(p => p.status === 'idea'))
+  const weekPlans = applyStatus(applyPartner(weekRaw.filter(p => p.status !== 'idea')))
+  const ideaPlans = applyAccountFilter(applyPartner(allRaw.filter(p => p.status === 'idea')))
+  const topPlans  = applyAccountFilter(applyPartner(allRaw.filter(p => p.is_top_video)))
 
-  const plans      = subTab === 'woche' ? weekPlans : ideaPlans
-  const isLoading  = subTab === 'woche' ? weekLoading : ideasLoading
+  const plans     = subTab === 'woche' ? weekPlans : subTab === 'ideen' ? ideaPlans : topPlans
+  const isLoading = subTab === 'woche' ? weekLoading : allLoading
 
   const invAll = () => {
     qc.invalidateQueries({ queryKey: ['plans-creator'] })
-    qc.invalidateQueries({ queryKey: ['plans-creator-ideas'] })
+    qc.invalidateQueries({ queryKey: ['plans-creator-all'] })
   }
 
   const createMut = useMutation({
-    mutationFn: data => createContentPlan({ ...data, week_number: week, year }),
+    mutationFn: data => createContentPlan({
+      ...data, week_number: week, year,
+      ...(subTab === 'woche' && selectedAccountId && { account_id: selectedAccountId }),
+    }),
     onSuccess: () => { invAll(); setShowNew(false) },
     onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
   })
@@ -656,6 +694,7 @@ function MeinContentTab({ week, year }) {
         status: 'planned', visible_to_agency: p.visible_to_agency,
         partner_type: p.partner_type, week_number: nw, year: ny,
         carried_over_from: p.id,
+        ...(p.account_id && { account_id: p.account_id }),
       })
       await updateContentPlan(p.id, { pushed_to_week: nw, pushed_to_year: ny })
     },
@@ -682,6 +721,8 @@ function MeinContentTab({ week, year }) {
   const offen    = weekPlans.filter(p => p.status === 'planned').length
   const erledigt = weekPlans.filter(p => p.status === 'done').length
 
+  const switchTab = val => { setSubTab(val); setShowNew(false); setEditId(null); setStatusFilter('Alle') }
+
   return (
     <div className="space-y-4">
       {/* Stat-Karten (immer KW-basiert) */}
@@ -691,29 +732,94 @@ function MeinContentTab({ week, year }) {
         <StatCard label="Erledigt" value={erledigt} color="green" />
       </div>
 
+      {/* Account-Selector */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</p>
+          <button onClick={() => setShowNewAccount(v => !v)}
+            className="text-xs text-violet-600 hover:text-violet-800 font-medium">
+            {showNewAccount ? 'Abbrechen' : '+ Neu'}
+          </button>
+        </div>
+        {showNewAccount && (
+          <div className="flex gap-2">
+            <input
+              value={newAccountName}
+              onChange={e => setNewAccountName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && newAccountName.trim()) addAccountMut.mutate(newAccountName.trim()) }}
+              placeholder="Account-Name…"
+              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
+            />
+            <button
+              onClick={() => newAccountName.trim() && addAccountMut.mutate(newAccountName.trim())}
+              disabled={addAccountMut.isPending || !newAccountName.trim()}
+              className="px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg disabled:opacity-50">
+              {addAccountMut.isPending ? '…' : 'Anlegen'}
+            </button>
+          </div>
+        )}
+        <div className="overflow-x-auto scrollbar-hide">
+          <div className="flex gap-1.5 w-max">
+            <button onClick={() => setSelectedAccountId(null)}
+              className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${!selectedAccountId ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+              Alle
+            </button>
+            {accounts.map(acc => (
+              <div key={acc.id} className="flex items-center gap-0.5">
+                <button onClick={() => setSelectedAccountId(acc.id === selectedAccountId ? null : acc.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${selectedAccountId === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  {acc.name}
+                </button>
+                {selectedAccountId === acc.id && (
+                  <button onClick={() => { if (window.confirm(`"${acc.name}" löschen?`)) delAccountMut.mutate(acc.id) }}
+                    className="text-gray-300 hover:text-red-400 p-0.5 transition-colors" title="Account löschen">
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Unterreiter */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-        {[['woche',`📅 KW${week}`],['ideen','💡 Ideenspeicher']].map(([val, label]) => (
-          <button key={val} onClick={() => { setSubTab(val); setShowNew(false); setEditId(null); setStatusFilter('Alle') }}
+        {[['woche',`📅 KW${week}`],['ideen','💡 Ideen'],['top','⭐ Top']].map(([val, label]) => (
+          <button key={val} onClick={() => switchTab(val)}
             className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {label}
           </button>
         ))}
       </div>
 
+      {/* Account-Filter für Ideen + Top (cross-account filter) */}
+      {(subTab === 'ideen' || subTab === 'top') && accounts.length > 0 && (
+        <div className="overflow-x-auto scrollbar-hide">
+          <div className="flex gap-1.5 w-max">
+            <button onClick={() => setAccountFilter(null)}
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${!accountFilter ? 'bg-gray-700 text-white border-gray-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              Alle Accounts
+            </button>
+            {accounts.map(acc => (
+              <button key={acc.id} onClick={() => setAccountFilter(acc.id === accountFilter ? null : acc.id)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${accountFilter === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                {acc.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filter + View-Toggle */}
       <div className="space-y-2">
-        {/* Row 1: Platform filter (scrollable) + view toggle */}
         <div className="flex items-center gap-2">
           <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
             <PlatformFilter value={platform} onChange={setPlatform} />
           </div>
-          {/* Desktop + button */}
           <button onClick={() => setShowNew(v => !v)}
             className="hidden sm:flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold px-3 py-1.5 rounded-lg border border-violet-200 hover:bg-violet-50 transition-colors flex-shrink-0">
             {showNew ? '✕' : '+ Neu'}
           </button>
-          {/* View toggle pill group */}
           <div className="flex flex-shrink-0 bg-gray-100 rounded-lg p-0.5 gap-0.5">
             <button onClick={() => setViewMode('list')} title="Listenansicht"
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
@@ -725,7 +831,6 @@ function MeinContentTab({ week, year }) {
             </button>
           </div>
         </div>
-        {/* Row 2: Solo/Partner + Status filters — single scrollable row */}
         <div className="overflow-x-auto scrollbar-hide">
           <div className="flex gap-1.5 items-center w-max">
             {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
@@ -749,10 +854,15 @@ function MeinContentTab({ week, year }) {
         </div>
       </div>
 
-      {/* Ideenspeicher-Hinweis */}
+      {/* Hinweisbanner */}
       {subTab === 'ideen' && (
         <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-xs text-indigo-600">
-          💡 Alle Ideen aus allen Wochen — zeitunabhängig speichern, später einplanen.
+          💡 Alle Ideen aus allen Accounts und Wochen — zeitunabhängig speichern, später einplanen.
+        </div>
+      )}
+      {subTab === 'top' && (
+        <div className="bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 text-xs text-yellow-700">
+          ⭐ Mit dem Stern markierte Videos aus allen Accounts — deine Top-Performance-Inhalte.
         </div>
       )}
 
@@ -795,9 +905,9 @@ function MeinContentTab({ week, year }) {
         <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>
       ) : plans.length === 0 ? (
         <div className="text-center py-10">
-          <div className="text-4xl mb-3">{subTab === 'ideen' ? '💡' : '🎬'}</div>
+          <div className="text-4xl mb-3">{subTab === 'ideen' ? '💡' : subTab === 'top' ? '⭐' : '🎬'}</div>
           <p className="text-gray-400 text-sm">
-            {subTab === 'ideen' ? 'Noch keine Ideen gespeichert' : `Keine Pläne für KW${week}`}
+            {subTab === 'ideen' ? 'Noch keine Ideen gespeichert' : subTab === 'top' ? 'Noch keine Top-Videos markiert' : `Keine Pläne für KW${week}`}
           </p>
         </div>
       ) : viewMode === 'list' ? (
@@ -806,7 +916,7 @@ function MeinContentTab({ week, year }) {
             <PlanListRow
               key={p.id}
               p={p}
-              isIdeaTab={subTab === 'ideen'}
+              isIdeaTab={subTab !== 'woche'}
               busy={busyId === p.id}
               updateMut={updateMut}
               onClick={() => setDetailPlan(p)}
@@ -824,8 +934,10 @@ function MeinContentTab({ week, year }) {
               updateMut={updateMut} deleteMut={deleteMut} pushMut={pushMut} undoPushMut={undoPushMut}
               allPlans={allRaw}
               busyId={busyId}
-              showWeekBadge={subTab === 'ideen'}
+              showWeekBadge={subTab !== 'woche'}
               isIdeaTab={subTab === 'ideen'}
+              isTopTab={subTab === 'top'}
+              accounts={accounts}
             />
           ))}
         </div>
@@ -841,18 +953,20 @@ function MeinContentTab({ week, year }) {
           pushMut={pushMut} undoPushMut={undoPushMut}
           allPlans={allRaw}
           busyId={busyId}
-          isIdeaTab={subTab === 'ideen'}
+          isIdeaTab={subTab !== 'woche'}
         />
       )}
 
       {/* FAB */}
-      <button onClick={() => setShowNew(v => !v)}
-        className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-14 h-14 bg-gradient-to-br from-violet-500 to-pink-500 text-white rounded-full shadow-lg shadow-violet-500/40 flex items-center justify-center hover:brightness-110 active:scale-95 transition-all">
-        {showNew
-          ? <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-          : <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
-        }
-      </button>
+      {subTab !== 'top' && (
+        <button onClick={() => setShowNew(v => !v)}
+          className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-14 h-14 bg-gradient-to-br from-violet-500 to-pink-500 text-white rounded-full shadow-lg shadow-violet-500/40 flex items-center justify-center hover:brightness-110 active:scale-95 transition-all">
+          {showNew
+            ? <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            : <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+          }
+        </button>
+      )}
     </div>
   )
 }

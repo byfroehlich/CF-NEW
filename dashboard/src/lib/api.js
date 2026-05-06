@@ -86,6 +86,11 @@ export const getAgency = id => api.get(`/api/v1/agencies/${id}`).then(r => r.dat
 export const createAgency = data => api.post('/api/v1/agencies', data).then(r => r.data)
 export const updateAgency = (id, data) => api.patch(`/api/v1/agencies/${id}`, data).then(r => r.data)
 
+// Creator Accounts
+export const getCreatorAccounts = () => api.get('/api/v1/creator-accounts').then(r => r.data)
+export const createCreatorAccount = data => api.post('/api/v1/creator-accounts', data).then(r => r.data)
+export const deleteCreatorAccount = id => api.delete(`/api/v1/creator-accounts/${id}`).then(r => r.data)
+
 // Content Plans
 export const getContentPlans = params => api.get('/api/v1/content-plans', { params }).then(r => r.data)
 export const createContentPlan = data => api.post('/api/v1/content-plans', data).then(r => r.data)

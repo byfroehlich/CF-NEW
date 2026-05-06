@@ -110,10 +110,12 @@ router.get('/stats', requireAnyRole, async (req, res) => {
 
 // GET /api/v1/content-plans
 router.get('/', requireAnyRole, async (req, res) => {
-  const { week, year, platform } = req.query
+  const { week, year, platform, account_id, is_top_video } = req.query
   const wk = week ? parseInt(week) : null
   const yr = year ? parseInt(year) : null
   const pf = platform && platform !== 'Alle' ? platform : null
+  const accountId = account_id || null
+  const topOnly = is_top_video === 'true'
   try {
     let plans
     if (req.user.role === 'admin') {
@@ -151,6 +153,8 @@ router.get('/', requireAnyRole, async (req, res) => {
           AND (${wk}::int IS NULL OR week_number = ${wk})
           AND (${yr}::int IS NULL OR year = ${yr})
           AND (${pf}::text IS NULL OR platform = ${pf})
+          AND (${accountId}::uuid IS NULL OR account_id = ${accountId}::uuid)
+          AND (${!topOnly}::boolean OR is_top_video = true)
         ORDER BY created_at DESC
       `
     }
@@ -174,10 +178,10 @@ router.post('/', requireAnyRole, validate(contentPlanSchema), async (req, res) =
       agencyId = c?.agency_id ?? null
     }
 
-    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung } = req.body
+    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung, account_id } = req.body
     const [plan] = await sql`
-      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung)
-      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null}, ${requisiten || null}, ${kleidung || null})
+      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung, account_id)
+      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null}, ${requisiten || null}, ${kleidung || null}, ${account_id || null})
       RETURNING *
     `
     res.status(201).json(plan)
@@ -216,7 +220,9 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
         pushed_to_week    = CASE WHEN ${'pushed_to_week' in f}::boolean THEN ${f.pushed_to_week ?? null} ELSE pushed_to_week END,
         pushed_to_year    = CASE WHEN ${'pushed_to_year' in f}::boolean THEN ${f.pushed_to_year ?? null} ELSE pushed_to_year END,
         requisiten        = COALESCE(${f.requisiten ?? null}, requisiten),
-        kleidung          = COALESCE(${f.kleidung ?? null}, kleidung)
+        kleidung          = COALESCE(${f.kleidung ?? null}, kleidung),
+        account_id        = CASE WHEN ${'account_id' in f}::boolean THEN ${f.account_id ?? null} ELSE account_id END,
+        is_top_video      = COALESCE(${f.is_top_video ?? null}, is_top_video)
       WHERE id = ${id}
       RETURNING *
     `

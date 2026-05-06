@@ -16,6 +16,7 @@ import changeRequestRoutes from './src/routes/change-requests.js'
 import uploadRoutes        from './src/routes/upload.js'
 import creatorPhotosRoutes from './src/routes/creator-photos.js'
 import systemRoutes        from './src/routes/system.js'
+import creatorAccountRoutes from './src/routes/creator-accounts.js'
 import sql                 from './src/db/client.js'
 
 config()
@@ -63,6 +64,7 @@ app.use('/api/v1/logs',                    logRoutes)
 app.use('/api/v1/change-requests',         changeRequestRoutes)
 app.use('/api/v1/upload',                  uploadRoutes)
 app.use('/api/v1/system',                  systemRoutes)
+app.use('/api/v1/creator-accounts',        creatorAccountRoutes)
 
 app.get('/health', (req, res) => res.json({ ok: true, ts: new Date().toISOString() }))
 

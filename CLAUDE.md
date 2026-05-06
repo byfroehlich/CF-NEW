@@ -228,6 +228,8 @@ CREATE TABLE content_plans (
   carried_over_from  UUID REFERENCES content_plans(id),  -- gesetzt wenn Übertrag aus Vorwoche
   pushed_to_week     INT,   -- gesetzt auf Original wenn in nächste Woche geschoben
   pushed_to_year     INT,
+  account_id         UUID REFERENCES creator_accounts(id),  -- welcher Creator-Account
+  is_top_video       BOOLEAN DEFAULT false,  -- mit Stern als Top-Performance markiert
   deleted_at         TIMESTAMPTZ,
   created_at         TIMESTAMPTZ DEFAULT now()
 );
@@ -243,6 +245,36 @@ ALTER TABLE content_plans
 ALTER TABLE content_plans
   ADD COLUMN IF NOT EXISTS partner_type TEXT DEFAULT 'solo'
     CHECK (partner_type IN ('solo', 'partner'));
+
+ALTER TABLE content_plans
+  ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES creator_accounts(id),
+  ADD COLUMN IF NOT EXISTS is_top_video BOOLEAN DEFAULT false;
+```
+
+### Tabelle: `creator_accounts`
+
+```sql
+CREATE TABLE IF NOT EXISTS creator_accounts (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id  UUID REFERENCES creators(id),
+  name        TEXT NOT NULL,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Neon-Migration (ausführen):**
+```sql
+CREATE TABLE IF NOT EXISTS creator_accounts (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id  UUID REFERENCES creators(id),
+  name        TEXT NOT NULL,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE content_plans
+  ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES creator_accounts(id),
+  ADD COLUMN IF NOT EXISTS is_top_video BOOLEAN DEFAULT false;
 ```
 
 ### Tabelle: `logs`
@@ -310,12 +342,22 @@ CREATE TABLE logs (
 
 | Method | Path | Rolle | Beschreibung |
 |---|---|---|---|
-| GET | `/` | creator (eigene), agency (eigene), admin (alle) | Pläne nach KW, Query-Params: week, year, platform |
-| POST | `/` | creator, agency, admin | Neuen Plan anlegen |
-| PATCH | `/:id` | creator (eigene), agency, admin | Plan bearbeiten (COALESCE-Update) |
+| GET | `/` | creator (eigene), agency (eigene), admin (alle) | Pläne; Query-Params: week, year, platform, account_id, is_top_video |
+| POST | `/` | creator, agency, admin | Neuen Plan anlegen (inkl. account_id) |
+| PATCH | `/:id` | creator (eigene), agency, admin | Plan bearbeiten; account_id: CASE WHEN; is_top_video: COALESCE |
 | DELETE | `/:id` | creator (eigene), agency, admin | Soft delete |
 
-**Schieben-Logik:** `POST` erstellt Kopie mit `carried_over_from: original.id`; gleichzeitig `PATCH` auf Original setzt `pushed_to_week/year`. Beide Richtungen sichtbar: Original zeigt „→ KW{n}", Kopie zeigt Amber-Badge „↩ Übertrag".
+**Schieben-Logik:** `POST` erstellt Kopie mit `carried_over_from: original.id`; gleichzeitig `PATCH` auf Original setzt `pushed_to_week/year`. Kopie erbt `account_id` vom Original.
+
+### Creator Accounts (`/api/v1/creator-accounts`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | creator | Eigene Accounts (name, id, created_at) |
+| POST | `/` | creator | Neuen Account anlegen ({ name }) |
+| DELETE | `/:id` | creator | Eigenen Account soft-löschen |
+
+**Zweck:** Creator kann mehrere Social-Media-Accounts trennen (z.B. OF, IG). Wochenplan filtert per `account_id`, Ideen + Top-Videos sind cross-account sichtbar (mit optionalem Account-Filter).
 
 ### Logs (`/api/v1/logs`)
 
@@ -344,7 +386,7 @@ CREATE TABLE logs (
 
 ### Creator-Dashboard
 - **Aufträge** — nur eigene Jobs, Filter: KW / Plattform
-- **Mein Content** — Content-Pläne anlegen/bearbeiten/löschen; Filter: KW / Plattform / Solo-Partner; Stat-Karten (Gesamt/Offen/Erledigt); nummerierte Liste; Checkbox zum Abhaken; Inline-Edit; Schieben → nächste KW mit Übertrag-Badge; Agentur-Sichtbarkeit-Toggle
+- **Mein Content** — Sub-Tabs: 📅 Wochenplan / 💡 Ideen / ⭐ Top-Videos; Account-Selector (anlegen, benennen, löschen); Wochenplan filtert per Account; Ideen + Top cross-account (mit Account-Filter); Stern-Button = `is_top_video` toggle; Stern erbt `account_id` vom Plan; Filter: Plattform / Solo-Partner; Stat-Karten (Gesamt/Offen/Erledigt); Listenansicht + Vollansicht; Inline-Edit; Schieben → nächste KW; Agentur-Sichtbarkeit-Toggle
 - **Statistik** — Wochenübersicht (Jobs der aktuellen KW) + Zeitraum-Karten (Monat/Quartal/Halbjahr/Jahr) + Plattform-Balken + Monatsverlauf; aktuell nur Aufträge (Jobs) — Eigener Content fehlt noch (→ TODO)
 
 ---
@@ -549,6 +591,7 @@ Persistente Leiste am unteren Rand — dient zum schnellen Rollen-Wechsel währe
 - [x] **PWA** — `vite-plugin-pwa` + Web App Manifest (CF-Icons) + Service Worker (NetworkFirst für offline Jobs/Pläne) + mobile-first Layout-Optimierungen Creator-Dashboard
 - [x] **Foto-Upload & Galerie** — multer disk storage, creator_photos-Tabelle, Typlimits (1× Profil, 5× Rolle, 2× Ausweis)
 - [x] **Creator-Aktivierungsflow** — activation_status-Pipeline, Agency/Admin aktiviert/lehnt ab, ID-Pflicht per System-Setting togglebar
+- [x] **Multi-Account + Top-Videos** — `creator_accounts`-Tabelle, `account_id` + `is_top_video` auf `content_plans`, Wochenplan account-gefiltert, Ideen/Top cross-account, Stern-Button
 
 ### Phase 2
 - [ ] Agentur-Login + Agentur-Dashboard vollständig (Statistik-Tab ausbauen)
@@ -639,5 +682,5 @@ await sql.begin(async sql => {
 
 ---
 
-*Zuletzt aktualisiert: 2026-04-30 — Phase 1 Grundsystem abgeschlossen, Statistik + PWA als nächstes*  
+*Zuletzt aktualisiert: 2026-05-06 — Multi-Account + Top-Videos implementiert*  
 *Alle Änderungen müssen hier dokumentiert werden.*

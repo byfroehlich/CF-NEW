@@ -111,6 +111,7 @@ export const contentPlanSchema = z.object({
   carried_over_from: z.string().uuid().optional().nullable(),
   requisiten: z.string().optional().nullable(),
   kleidung: z.string().optional().nullable(),
+  account_id: z.string().uuid().optional().nullable(),
 })
 
 export const contentPlanUpdateSchema = z.object({
@@ -127,4 +128,6 @@ export const contentPlanUpdateSchema = z.object({
   pushed_to_year: z.number().int().optional().nullable(),
   requisiten: z.string().optional().nullable(),
   kleidung: z.string().optional().nullable(),
+  account_id: z.string().uuid().optional().nullable(),
+  is_top_video: z.boolean().optional(),
 })
