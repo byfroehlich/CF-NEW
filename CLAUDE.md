@@ -252,6 +252,10 @@ ALTER TABLE content_plans
 ALTER TABLE content_plans
   ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES creator_accounts(id),
   ADD COLUMN IF NOT EXISTS is_top_video BOOLEAN DEFAULT false;
+
+-- Push-Dialog: week_number/year nullable (Top-Video aus Woche entfernen ohne zu löschen)
+ALTER TABLE content_plans ALTER COLUMN week_number DROP NOT NULL;
+ALTER TABLE content_plans ALTER COLUMN year DROP NOT NULL;
 ```
 
 ### Tabelle: `creator_accounts`
@@ -278,6 +282,8 @@ CREATE TABLE IF NOT EXISTS creator_accounts (
 ALTER TABLE content_plans
   ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES creator_accounts(id),
   ADD COLUMN IF NOT EXISTS is_top_video BOOLEAN DEFAULT false;
+ALTER TABLE content_plans ALTER COLUMN week_number DROP NOT NULL;
+ALTER TABLE content_plans ALTER COLUMN year DROP NOT NULL;
 ```
 
 ### Tabelle: `creator_photos`

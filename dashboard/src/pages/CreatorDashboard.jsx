@@ -253,7 +253,7 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
 }
 
 // ── Plan-Karte (wiederverwendet in Wochenplan + Ideen) ───────
-function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, showWeekBadge, isIdeaTab, isTopTab, accounts }) {
+function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, showWeekBadge, isIdeaTab, isTopTab, accounts, onPushRequest }) {
   const nxt = nextWeekOf(week, year)
   const [confirmDel, setConfirmDel] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -361,12 +361,12 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
               )}
 
               {/* Push / Einplanen / Rückgängig — outlined pill */}
-              {isIdeaTab ? (
+              {isIdeaTab || isTopTab ? (
                 <button
-                  onClick={() => updateMut.mutate({ id: p.id, status: 'planned', week_number: week, year })}
+                  onClick={() => onPushRequest && onPushRequest(p)}
                   disabled={busy}
                   className="text-xs font-semibold px-2.5 py-1 rounded-full border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-40 transition-colors whitespace-nowrap">
-                  {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : `→ KW${week}`}
+                  {`→ KW${week}`}
                 </button>
               ) : p.pushed_to_week ? (
                 <button onClick={() => undoPushMut.mutate({ id: p.id, allPlans })} disabled={undoPushMut?.isPending || busy}
@@ -416,9 +416,9 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
               {/* Delete / Confirm */}
               {confirmDel ? (
                 <>
-                  <button onClick={() => { deleteMut.mutate(p.id); setConfirmDel(false) }}
+                  <button onClick={() => { deleteMut.mutate({ id: p.id, is_top_video: p.is_top_video, fromWoche: !isIdeaTab && !isTopTab }); setConfirmDel(false) }}
                     className="text-xs text-white bg-red-500 hover:bg-red-600 font-bold px-2 py-1 rounded-lg transition-colors">
-                    Ja
+                    {!isIdeaTab && !isTopTab && p.is_top_video ? 'Aus Woche' : 'Ja'}
                   </button>
                   <button onClick={() => setConfirmDel(false)}
                     className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors">
@@ -487,7 +487,7 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, account
 }
 
 // ── Plan Detail Modal ────────────────────────────────────────
-function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab }) {
+function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab, onPushRequest }) {
   const [editing, setEditing] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -555,7 +555,7 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
                   </button>
                 )}
                 {isIdeaTab ? (
-                  <button onClick={() => { updateMut.mutate({ id: p.id, status: 'planned', week_number: week, year }); onClose() }} disabled={busy}
+                  <button onClick={() => { onClose(); onPushRequest && onPushRequest(p) }} disabled={busy}
                     className="w-full py-2.5 rounded-xl text-sm font-semibold border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-50">
                     → KW{week} einplanen
                   </button>
@@ -584,7 +584,9 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
                   <button onClick={() => setEditing(true)} className="text-xs text-indigo-600 hover:underline font-medium">Bearbeiten</button>
                   {confirmDel ? (
                     <>
-                      <button onClick={() => { deleteMut.mutate(p.id); onClose() }} className="text-xs text-white bg-red-500 px-2.5 py-1 rounded-lg font-bold">Löschen</button>
+                      <button onClick={() => { deleteMut.mutate({ id: p.id, is_top_video: p.is_top_video, fromWoche: !isIdeaTab }); onClose() }} className="text-xs text-white bg-red-500 px-2.5 py-1 rounded-lg font-bold">
+                    {!isIdeaTab && p.is_top_video ? 'Aus Woche entfernen' : 'Löschen'}
+                  </button>
                       <button onClick={() => setConfirmDel(false)} className="text-xs text-gray-500">Abbrechen</button>
                     </>
                   ) : (
@@ -594,6 +596,85 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
               </div>
             </>
           )}
+        </div>
+      </div>
+    </div>,
+    document.body
+  )
+}
+
+// ── Push-Dialog (Ideen / Top → aktuelle Woche) ───────────────
+function PushDialog({ plan, week, accounts, onConfirm, onClose, isPending }) {
+  const [pushAccountId, setPushAccountId] = useState(
+    plan.account_id && accounts.find(a => a.id === plan.account_id) ? plan.account_id :
+    accounts.length === 1 ? accounts[0].id : null
+  )
+  const [mode, setMode] = useState('kopieren')
+  const canConfirm = !isPending && (accounts.length === 0 || pushAccountId !== null)
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="relative bg-white rounded-t-3xl w-full max-w-lg shadow-2xl"
+           onClick={e => e.stopPropagation()}>
+        <div className="flex justify-center pt-3 pb-1">
+          <div className="w-10 h-1 rounded-full bg-gray-300" />
+        </div>
+        <div className="px-5 pt-2 pb-8 space-y-5">
+          {/* Header */}
+          <div className="flex items-start gap-3">
+            <PlatformIcon platform={plan.platform} size="sm" />
+            <div>
+              <p className="text-base font-bold text-gray-900">In KW{week} einplanen</p>
+              <p className="text-xs text-gray-400 mt-0.5 truncate max-w-xs">{plan.title || 'Kein Titel'}</p>
+            </div>
+          </div>
+
+          {/* Account — Pflicht wenn Accounts vorhanden */}
+          {accounts.length > 0 && (
+            <div>
+              <div className="flex items-center gap-1.5 mb-2">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</p>
+                <span className="text-red-400 text-[10px] font-bold">Pflicht</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {accounts.map(acc => (
+                  <button key={acc.id} onClick={() => setPushAccountId(acc.id)}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors ${pushAccountId === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                    {acc.name}
+                  </button>
+                ))}
+              </div>
+              {!pushAccountId && (
+                <p className="text-xs text-red-400 mt-1.5">Bitte einen Account auswählen</p>
+              )}
+            </div>
+          )}
+
+          {/* Modus: Kopieren / Verschieben */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Wie einplanen?</p>
+            <div className="flex gap-2">
+              <button onClick={() => setMode('kopieren')}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${mode === 'kopieren' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                📋 Kopieren
+              </button>
+              <button onClick={() => setMode('verschieben')}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${mode === 'verschieben' ? 'bg-violet-600 text-white border-violet-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                → Verschieben
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">
+              {mode === 'kopieren' ? 'Original bleibt in Ideen / Top erhalten.' : 'Original wird aus Ideen / Top entfernt.'}
+            </p>
+          </div>
+
+          <button
+            onClick={() => canConfirm && onConfirm({ accountId: pushAccountId, mode })}
+            disabled={!canConfirm}
+            className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-2xl hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+            {isPending ? '…' : `→ KW${week} einplanen`}
+          </button>
         </div>
       </div>
     </div>,
@@ -620,6 +701,7 @@ function MeinContentTab({ week, year }) {
   const [renamingId, setRenamingId]                = useState(null)
   const [renameValue, setRenameValue]              = useState('')
   const [showFilterSheet, setShowFilterSheet]      = useState(false)
+  const [pushDialog, setPushDialog]                = useState(null)  // { plan } | null
 
   // Accounts laden
   const { data: accounts = [] } = useQuery({ queryKey: ['creator-accounts'], queryFn: getCreatorAccounts })
@@ -701,7 +783,12 @@ function MeinContentTab({ week, year }) {
   })
 
   const deleteMut = useMutation({
-    mutationFn: id => deleteContentPlan(id),
+    mutationFn: ({ id, is_top_video, fromWoche }) => {
+      if (fromWoche && is_top_video) {
+        return updateContentPlan(id, { week_number: null, year: null })
+      }
+      return deleteContentPlan(id)
+    },
     onSuccess: invAll,
     onError: e => alert('Fehler beim Löschen: ' + (e.response?.data?.error || e.message))
   })
@@ -733,10 +820,38 @@ function MeinContentTab({ week, year }) {
     onError: e => alert('Fehler beim Rückgängig: ' + (e.response?.data?.error || e.message))
   })
 
+  const pushFromIdOrTopMut = useMutation({
+    mutationFn: async ({ plan, accountId, mode }) => {
+      await createContentPlan({
+        platform: plan.platform,
+        title: plan.title,
+        description: plan.description,
+        source_link: plan.source_link || null,
+        status: 'planned',
+        visible_to_agency: plan.visible_to_agency,
+        partner_type: plan.partner_type || 'solo',
+        week_number: week,
+        year,
+        carried_over_from: plan.id,
+        requisiten: plan.requisiten || null,
+        kleidung: plan.kleidung || null,
+        ...(accountId && { account_id: accountId }),
+      })
+      if (mode === 'verschieben') {
+        await deleteContentPlan(plan.id)
+      }
+    },
+    onSuccess: () => { invAll(); setPushDialog(null) },
+    onError: e => alert('Fehler beim Einplanen: ' + (e.response?.data?.error || e.message))
+  })
+
   const busyId = (updateMut.isPending && updateMut.variables?.id)
-    || (deleteMut.isPending && deleteMut.variables)
+    || (deleteMut.isPending && deleteMut.variables?.id)
     || (pushMut.isPending && pushMut.variables?.id)
     || (undoPushMut.isPending && undoPushMut.variables?.id)
+    || (pushFromIdOrTopMut.isPending && pushFromIdOrTopMut.variables?.plan?.id)
+
+  const handlePushRequest = (p) => setPushDialog({ plan: p })
 
   const gesamt   = weekPlans.length
   const offen    = weekPlans.filter(p => p.status === 'planned').length
@@ -1079,6 +1194,7 @@ function MeinContentTab({ week, year }) {
               isIdeaTab={subTab === 'ideen'}
               isTopTab={subTab === 'top'}
               accounts={accounts}
+              onPushRequest={handlePushRequest}
             />
           ))}
         </div>
@@ -1095,6 +1211,21 @@ function MeinContentTab({ week, year }) {
           allPlans={allRaw}
           busyId={busyId}
           isIdeaTab={subTab !== 'woche'}
+          onPushRequest={handlePushRequest}
+        />
+      )}
+
+      {/* Push-Dialog */}
+      {pushDialog && (
+        <PushDialog
+          plan={pushDialog.plan}
+          week={week}
+          accounts={accounts}
+          onConfirm={({ accountId, mode }) =>
+            pushFromIdOrTopMut.mutate({ plan: pushDialog.plan, accountId, mode })
+          }
+          onClose={() => !pushFromIdOrTopMut.isPending && setPushDialog(null)}
+          isPending={pushFromIdOrTopMut.isPending}
         />
       )}
 
