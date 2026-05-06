@@ -52,6 +52,13 @@ CREATE TABLE IF NOT EXISTS creators (
   telegram_chat_id  BIGINT,
   -- Intern (DSGVO: NICHT an Creator-Rolle zurückgeben)
   notes             TEXT,
+  billing_party     TEXT,
+  -- Aktivierungsstatus
+  activation_status TEXT DEFAULT 'pending'
+    CHECK (activation_status IN ('pending','id_uploaded','ai_checked','agency_confirmed','active','rejected')),
+  id_verified       BOOLEAN DEFAULT false,
+  id_verified_at    TIMESTAMPTZ,
+  id_verified_by    UUID REFERENCES users(id),
   -- Status
   active            BOOLEAN DEFAULT true,
   deleted_at        TIMESTAMPTZ,
@@ -134,6 +141,32 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
   created_at  TIMESTAMPTZ DEFAULT now()
 );
 
+-- ── Creator Photos ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS creator_photos (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id  UUID REFERENCES creators(id),
+  url         TEXT NOT NULL,
+  type        TEXT NOT NULL CHECK (type IN ('profile','role','id_document')),
+  label       TEXT,
+  sort_order  INT DEFAULT 0,
+  uploaded_by UUID REFERENCES users(id),
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_creator_photos_creator
+  ON creator_photos(creator_id) WHERE deleted_at IS NULL;
+
+-- ── System Settings ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS system_settings (
+  key        TEXT PRIMARY KEY,
+  value      JSONB NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  updated_by UUID REFERENCES users(id)
+);
+INSERT INTO system_settings (key, value)
+  VALUES ('require_id_verification', 'true')
+  ON CONFLICT DO NOTHING;
+
 -- ── Content Plans ────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS content_plans (
   id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -147,6 +180,12 @@ CREATE TABLE IF NOT EXISTS content_plans (
   source_link       TEXT,
   status            TEXT DEFAULT 'idea' CHECK (status IN ('idea','planned','filming','done')),
   visible_to_agency BOOLEAN DEFAULT false,
+  partner_type      TEXT DEFAULT 'solo' CHECK (partner_type IN ('solo','partner')),
+  carried_over_from UUID REFERENCES content_plans(id),
+  pushed_to_week    INT,
+  pushed_to_year    INT,
+  requisiten        TEXT,
+  kleidung          TEXT,
   deleted_at        TIMESTAMPTZ,
   created_at        TIMESTAMPTZ DEFAULT now()
 );
