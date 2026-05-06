@@ -9,7 +9,21 @@ import PlatformFilter from '../components/PlatformFilter.jsx'
 import PlatformIcon from '../components/PlatformIcon.jsx'
 import WeekNav from '../components/WeekNav.jsx'
 
-function getCurrentWeek() {
+// ── SVG-Icon-Helfer (Heroicons-Stil, strokeWidth 1.75) ────────
+const IcoCal   = ({s='w-4 h-4'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}><path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+const IcoBulb  = ({s='w-4 h-4'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}><path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636-.707.707M21 12h-1M4 12H3m3.343-5.657-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+const IcoStar  = ({s='w-4 h-4',f=false}) => <svg className={s} fill={f?'currentColor':'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}><path strokeLinecap="round" strokeLinejoin="round" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/></svg>
+const IcoUser  = ({s='w-3.5 h-3.5'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+const IcoUsers = ({s='w-3.5 h-3.5'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+const IcoPen   = ({s='w-3.5 h-3.5'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+const IcoCopy  = ({s='w-4 h-4'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+const IcoArrow = ({s='w-4 h-4'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+const IcoInbox = ({s='w-12 h-12'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/></svg>
+const IcoFilm  = ({s='w-12 h-12'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+const IcoChart = ({s='w-12 h-12'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+const IcoList  = ({s='w-4 h-4'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+
+
   const now = new Date()
   const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
   const dayNum = d.getUTCDay() || 7
@@ -75,7 +89,7 @@ function AuftraegeTab({ week, year }) {
         <p className="text-center text-gray-400 text-sm py-12">Lädt…</p>
       ) : jobs.length === 0 ? (
         <div className="text-center py-12">
-          <div className="text-4xl mb-3">🌸</div>
+          <div className="text-gray-200 mb-3"><IcoInbox /></div>
           <p className="text-gray-400 text-sm">Keine Jobs für KW{week}</p>
         </div>
       ) : (
@@ -195,10 +209,10 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
       </div>
       {/* Solo / Partner */}
       <div className="flex gap-2">
-        {[['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
+        {[['solo', <IcoUser />, 'Solo'], ['partner', <IcoUsers />, 'Partner']].map(([val, icon, lbl]) => (
           <button key={val} type="button" onClick={() => setF(x => ({ ...x, partner_type: val }))}
-            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors ${f.partner_type === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
-            {label}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center justify-center gap-1.5 ${f.partner_type === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+            {icon} {lbl}
           </button>
         ))}
       </div>
@@ -310,8 +324,8 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <PlatformIcon platform={p.platform} size="badge" />
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
-                  {p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
+                  {p.partner_type === 'partner' ? <><IcoUsers /> Partner</> : <><IcoUser /> Solo</>}
                 </span>
                 {accountName && (
                   <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium">{accountName}</span>
@@ -465,7 +479,7 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, account
       {/* Plattform */}
       <PlatformIcon platform={p.platform} size="badge" />
       {/* Solo/Partner */}
-      <span className="text-sm flex-shrink-0">{p.partner_type === 'partner' ? '👥' : '👤'}</span>
+      <span className="text-gray-400 flex-shrink-0">{p.partner_type === 'partner' ? <IcoUsers /> : <IcoUser />}</span>
       {/* Account */}
       {accounts?.find(a => a.id === p.account_id) && (
         <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium flex-shrink-0 max-w-[80px] truncate">
@@ -479,7 +493,7 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, account
       {/* Mini-Badges */}
       {p.pushed_to_week && <span className="text-xs text-orange-500 font-medium flex-shrink-0">→KW{p.pushed_to_week}</span>}
       {p.carried_over_from && !isTopTab && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
-      {p.is_top_video && <span className="text-yellow-500 flex-shrink-0 text-sm">⭐</span>}
+      {p.is_top_video && <span className="text-yellow-400 flex-shrink-0"><IcoStar s="w-3.5 h-3.5" f={true} /></span>}
       {/* Chevron */}
       <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
     </div>
@@ -503,7 +517,7 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl">
           <div className="flex items-center gap-2 flex-wrap">
             <PlatformIcon platform={p.platform} size="badge" />
-            <span className="text-xs font-medium text-gray-500">{p.partner_type === 'partner' ? '👥 Partner' : '👤 Solo'}</span>
+            <span className="text-xs font-medium text-gray-500 flex items-center gap-1">{p.partner_type === 'partner' ? <><IcoUsers /> Partner</> : <><IcoUser /> Solo</>}</span>
             {p.carried_over_from && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">↩ Übertrag</span>}
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors flex-shrink-0">
@@ -656,12 +670,12 @@ function PushDialog({ plan, week, accounts, onConfirm, onClose, isPending }) {
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Wie einplanen?</p>
             <div className="flex gap-2">
               <button onClick={() => setMode('kopieren')}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${mode === 'kopieren' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-                📋 Kopieren
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors flex items-center justify-center gap-2 ${mode === 'kopieren' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                <IcoCopy /> Kopieren
               </button>
               <button onClick={() => setMode('verschieben')}
-                className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${mode === 'verschieben' ? 'bg-violet-600 text-white border-violet-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-                → Verschieben
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors flex items-center justify-center gap-2 ${mode === 'verschieben' ? 'bg-violet-600 text-white border-violet-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                <IcoArrow /> Verschieben
               </button>
             </div>
             <p className="text-xs text-gray-400 mt-1.5">
@@ -934,8 +948,8 @@ function MeinContentTab({ week, year }) {
                 ) : (
                   <>
                     <button onClick={() => { setRenamingId(acc.id); setRenameValue(acc.name) }}
-                      className="flex-1 text-left px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors">
-                      ✎ {acc.name}
+                      className="flex-1 text-left px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors flex items-center gap-2">
+                      <IcoPen s="w-3 h-3" />{acc.name}
                     </button>
                     <button onClick={() => { if (window.confirm(`"${acc.name}" löschen?`)) delAccountMut.mutate(acc.id) }}
                       className="p-1.5 text-red-300 hover:text-red-500 transition-colors" title="Löschen">
@@ -972,10 +986,14 @@ function MeinContentTab({ week, year }) {
 
       {/* Unterreiter */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-        {[['woche',`📅 KW${week}`],['ideen','💡 Ideen'],['top','⭐ Top']].map(([val, label]) => (
+        {([
+          ['woche', <IcoCal />,              `KW${week}`],
+          ['ideen', <IcoBulb />,             'Ideen'],
+          ['top',   <IcoStar f={subTab==='top'} />, 'Top'],
+        ]).map(([val, icon, lbl]) => (
           <button key={val} onClick={() => switchTab(val)}
-            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {label}
+            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            {icon}{lbl}
           </button>
         ))}
       </div>
@@ -1054,10 +1072,14 @@ function MeinContentTab({ week, year }) {
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Art</p>
                 <div className="flex gap-2">
-                  {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, lbl]) => (
+                  {([
+                    ['Alle',    null,        'Alle'],
+                    ['solo',    <IcoUser />, 'Solo'],
+                    ['partner', <IcoUsers />,'Partner'],
+                  ]).map(([val, icon, lbl]) => (
                     <button key={val} onClick={() => setPartnerFilter(val)}
-                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${partnerFilter === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
-                      {lbl}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors flex items-center justify-center gap-1.5 ${partnerFilter === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                      {icon}{lbl}
                     </button>
                   ))}
                 </div>
@@ -1110,13 +1132,13 @@ function MeinContentTab({ week, year }) {
 
       {/* Hinweisbanner */}
       {subTab === 'ideen' && (
-        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-xs text-indigo-600">
-          💡 Alle Ideen aus allen Accounts und Wochen — zeitunabhängig speichern, später einplanen.
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-xs text-indigo-600 flex items-center gap-2">
+          <IcoBulb s="w-3.5 h-3.5 flex-shrink-0" /> Alle Ideen aus allen Accounts und Wochen — zeitunabhängig speichern, später einplanen.
         </div>
       )}
       {subTab === 'top' && (
-        <div className="bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 text-xs text-yellow-700">
-          ⭐ Mit dem Stern markierte Videos aus allen Accounts — deine Top-Performance-Inhalte.
+        <div className="bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 text-xs text-yellow-700 flex items-center gap-2">
+          <IcoStar s="w-3.5 h-3.5 flex-shrink-0" f={true} /> Mit dem Stern markierte Videos aus allen Accounts — deine Top-Performance-Inhalte.
         </div>
       )}
 
@@ -1129,7 +1151,7 @@ function MeinContentTab({ week, year }) {
                onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl">
               <p className="text-sm font-semibold text-gray-800">
-                {subTab === 'ideen' ? '💡 Neue Idee' : '📅 Neuer Plan'}
+                <span className="flex items-center gap-1.5">{subTab === 'ideen' ? <><IcoBulb s="w-3.5 h-3.5" /> Neue Idee</> : <><IcoCal s="w-3.5 h-3.5" /> Neuer Plan</>}</span>
               </p>
               <button onClick={() => setShowNew(false)}
                 className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600">
@@ -1159,7 +1181,7 @@ function MeinContentTab({ week, year }) {
         <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>
       ) : plans.length === 0 ? (
         <div className="text-center py-10">
-          <div className="text-4xl mb-3">{subTab === 'ideen' ? '💡' : subTab === 'top' ? '⭐' : '🎬'}</div>
+          <div className="text-gray-200 mb-3">{subTab === 'ideen' ? <IcoBulb s="w-12 h-12" /> : subTab === 'top' ? <IcoStar s="w-12 h-12" /> : <IcoFilm />}</div>
           <p className="text-gray-400 text-sm">
             {subTab === 'ideen' ? 'Noch keine Ideen gespeichert' : subTab === 'top' ? 'Noch keine Top-Videos markiert' : `Keine Pläne für KW${week}`}
           </p>
@@ -1316,7 +1338,7 @@ function StatsSection({ stats, period, setPeriod, platform, setPlatform }) {
       {!stats && <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>}
       {stats && stats.year_count === 0 && (
         <div className="text-center py-6">
-          <div className="text-3xl mb-2">📊</div>
+          <div className="text-gray-200 mb-2"><IcoChart /></div>
           <p className="text-gray-400 text-sm">Noch keine Daten für {new Date().getFullYear()}</p>
         </div>
       )}
@@ -1366,10 +1388,13 @@ function StatistikTab({ week, year }) {
 
       {/* ── Datentyp-Toggle — ganz oben ─────────────────── */}
       <div className="flex gap-2 bg-gray-100 rounded-xl p-1">
-        {[['jobs','📋 Aufträge'],['plans','🎬 Eigener Content']].map(([val, label]) => (
+        {([
+          ['jobs',  <IcoList />,  'Aufträge'],
+          ['plans', <IcoFilm s="w-4 h-4" />, 'Eigener Content'],
+        ]).map(([val, icon, lbl]) => (
           <button key={val} onClick={() => { setDataType(val); setPlatform('Alle') }}
-            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${dataType === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-            {label}
+            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${dataType === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            {icon}{lbl}
           </button>
         ))}
       </div>
