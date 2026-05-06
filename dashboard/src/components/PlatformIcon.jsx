@@ -83,7 +83,7 @@ const CFG = {
 }
 
 const SIZES = {
-  filter: { box: 'w-10 h-10', text: 'text-[11px]', icon: 18 },
+  filter: { box: 'w-11 h-11', text: 'text-[11px]', icon: 20 },
   badge:  { box: 'w-6 h-6',  text: 'text-[8px]',  icon: 13 },
   sm:     { box: 'w-8 h-8',  text: 'text-[9px]',  icon: 15 },
 }
@@ -97,9 +97,10 @@ export default function PlatformIcon({ platform, size = 'badge', active = false,
     <Tag
       onClick={onClick}
       className={`
-        inline-flex items-center justify-center rounded-xl flex-shrink-0
+        inline-flex items-center justify-center rounded-2xl flex-shrink-0
         ${s.box} ${cfg.bg}
-        ${onClick ? 'cursor-pointer transition-all active:scale-95 ' + (active ? 'ring-2 ring-offset-1 ring-indigo-500' : 'opacity-80 hover:opacity-100') : ''}
+        ${size === 'filter' ? 'shadow-md shadow-black/15' : ''}
+        ${onClick ? 'cursor-pointer transition-all active:scale-95 ' + (active ? 'ring-2 ring-offset-2 ring-indigo-500 shadow-lg shadow-indigo-200' : 'opacity-75 hover:opacity-100 hover:shadow-lg') : ''}
         ${className}
       `}
       title={cfg.label}

@@ -864,67 +864,62 @@ function MeinContentTab({ week, year }) {
         ))}
       </div>
 
-      {/* Account-Filter für Ideen + Top (cross-account filter) */}
-      {(subTab === 'ideen' || subTab === 'top') && accounts.length > 0 && (
-        <div className="overflow-x-auto scrollbar-hide">
-          <div className="flex gap-1.5 w-max">
-            <button onClick={() => setAccountFilter(null)}
-              className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${!accountFilter ? 'bg-gray-700 text-white border-gray-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-              Alle Accounts
+      {/* Filter-Zeile: Platform | Solo/Partner | Status/Accounts — alles in einer scrollbaren Reihe */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-1.5 w-max pr-2">
+            {/* Platform */}
+            <button onClick={() => setPlatform('Alle')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex-shrink-0 ${platform === 'Alle' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              Alle
             </button>
-            {accounts.map(acc => (
-              <button key={acc.id} onClick={() => setAccountFilter(acc.id === accountFilter ? null : acc.id)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${accountFilter === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-                {acc.name}
-              </button>
+            {['IG','TK','OF','FL','ML'].map(p => (
+              <PlatformIcon key={p} platform={p} size="filter" active={platform === p} onClick={() => setPlatform(p)} />
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* Filter + View-Toggle */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
-            <PlatformFilter value={platform} onChange={setPlatform} />
-          </div>
-          {canCreate && (
-            <button onClick={() => setShowNew(v => !v)}
-              className="hidden sm:flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 font-semibold px-3 py-1.5 rounded-lg border border-violet-200 hover:bg-violet-50 transition-colors flex-shrink-0">
-              {showNew ? '✕' : '+ Neu'}
-            </button>
-          )}
-          <div className="flex flex-shrink-0 bg-gray-100 rounded-lg p-0.5 gap-0.5">
-            <button onClick={() => setViewMode('list')} title="Listenansicht"
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
-            </button>
-            <button onClick={() => setViewMode('full')} title="Vollansicht"
-              className={`p-1.5 rounded-md transition-colors ${viewMode === 'full' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
-            </button>
-          </div>
-        </div>
-        <div className="overflow-x-auto scrollbar-hide">
-          <div className="flex gap-1.5 items-center w-max">
-            {[['Alle','Alle'],['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
+            <span className="w-px h-7 bg-gray-200 flex-shrink-0 mx-0.5" />
+            {/* Solo / Partner */}
+            {[['Alle','Alle'],['solo','👤'],['partner','👥']].map(([val, lbl]) => (
               <button key={val} onClick={() => setPartnerFilter(val)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border whitespace-nowrap ${partnerFilter === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                {label}
+                className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${partnerFilter === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                {lbl}
               </button>
             ))}
-            {subTab === 'woche' && (
-              <>
-                <span className="w-px h-3.5 bg-gray-200 flex-shrink-0 mx-0.5" />
-                {[['Alle','Alle'],['fertig','✓ Fertig'],['geschoben','→ Geschoben']].map(([val, label]) => (
-                  <button key={`s-${val}`} onClick={() => setStatusFilter(val)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border whitespace-nowrap ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                    {label}
-                  </button>
-                ))}
-              </>
-            )}
+            {/* Status (nur Wochenplan) */}
+            {subTab === 'woche' && <>
+              <span className="w-px h-7 bg-gray-200 flex-shrink-0 mx-0.5" />
+              {[['Alle','Alle'],['fertig','✓'],['geschoben','→']].map(([val, lbl]) => (
+                <button key={`s-${val}`} onClick={() => setStatusFilter(val)}
+                  className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  {lbl}
+                </button>
+              ))}
+            </>}
+            {/* Account-Filter (Ideen + Top, cross-account) */}
+            {(subTab === 'ideen' || subTab === 'top') && accounts.length > 0 && <>
+              <span className="w-px h-7 bg-gray-200 flex-shrink-0 mx-0.5" />
+              <button onClick={() => setAccountFilter(null)}
+                className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${!accountFilter ? 'bg-gray-700 text-white border-gray-700' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                Accounts
+              </button>
+              {accounts.map(acc => (
+                <button key={acc.id} onClick={() => setAccountFilter(acc.id === accountFilter ? null : acc.id)}
+                  className={`px-2.5 py-1.5 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${accountFilter === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                  {acc.name}
+                </button>
+              ))}
+            </>}
           </div>
+        </div>
+        {/* View-Toggle */}
+        <div className="flex flex-shrink-0 bg-gray-100 rounded-lg p-0.5 gap-0.5">
+          <button onClick={() => setViewMode('list')} title="Listenansicht"
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+          </button>
+          <button onClick={() => setViewMode('full')} title="Vollansicht"
+            className={`p-1.5 rounded-md transition-colors ${viewMode === 'full' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+          </button>
         </div>
       </div>
 
@@ -1625,10 +1620,10 @@ export default function CreatorDashboard() {
           </div>
         </div>
         {/* Pill-Tabs */}
-        <div className="max-w-2xl mx-auto mt-4 flex gap-1 overflow-x-auto px-4 pb-1 scrollbar-hide">
+        <div className="max-w-2xl mx-auto mt-4 flex gap-1 justify-center pb-1">
           {['Aufträge','Mein Content','Profil','Statistik'].map(t => (
             <button key={t} onClick={() => setActiveTab(t)}
-              className={`flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
               {t}
             </button>
           ))}
