@@ -705,7 +705,7 @@ function MeinContentTab({ week, year }) {
       <div className="space-y-2">
         {/* Row 1: Platform filter (scrollable) + view toggle */}
         <div className="flex items-center gap-2">
-          <div className="flex-1 overflow-x-auto scrollbar-hide">
+          <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
             <PlatformFilter value={platform} onChange={setPlatform} />
           </div>
           {/* Desktop + button */}
