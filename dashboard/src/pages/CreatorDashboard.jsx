@@ -110,7 +110,7 @@ function JobTagRow({ job, onUpdate, busy }) {
 }
 
 // ── Aufträge Tab ─────────────────────────────────────────────
-function AuftraegeTab({ week, year }) {
+function AuftraegeTab({ week, year, onWeekChange }) {
   const qc = useQueryClient()
   const isDesktop = useIsDesktop()
   const [subTab, setSubTab]             = useState('jobs')
@@ -465,6 +465,9 @@ function AuftraegeTab({ week, year }) {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Toolbar */}
         <div className="px-5 pt-4 pb-3 border-b border-gray-100 bg-white space-y-3 flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <WeekNav light week={week} year={year} onChange={onWeekChange} />
+          </div>
           <div className="grid grid-cols-3 gap-3">
             <StatCard label="Gesamt"   value={gesamt}   color="gray" />
             <StatCard label="Offen"    value={offen}    color="red" />
@@ -1166,7 +1169,7 @@ function PushDialog({ plan, week, accounts, onConfirm, onClose, isPending }) {
 }
 
 // ── Mein Content Tab ─────────────────────────────────────────
-function MeinContentTab({ week, year }) {
+function MeinContentTab({ week, year, onWeekChange }) {
   const qc = useQueryClient()
   const [subTab, setSubTab]               = useState('woche')  // 'woche' | 'ideen' | 'top'
   const [platform, setPlatform]           = useState('Alle')
@@ -1758,6 +1761,11 @@ function MeinContentTab({ week, year }) {
           </div>
           {/* END MOBILE ONLY */}
 
+          {/* DESKTOP ONLY: KW nav */}
+          <div className="hidden lg:flex items-center justify-between pb-3 border-b border-gray-100">
+            <WeekNav light week={week} year={year} onChange={onWeekChange} />
+          </div>
+
           {/* DESKTOP ONLY: platform filter row + view toggle */}
           <div className="hidden lg:flex items-center gap-3 pb-4 border-b border-gray-100">
             <div className="flex-1 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
@@ -2104,7 +2112,7 @@ function StatsSection({ stats, period, setPeriod, platform, setPlatform }) {
   )
 }
 
-function StatistikTab({ week, year }) {
+function StatistikTab({ week, year, onWeekChange }) {
   const [dataType, setDataType] = useState('jobs')   // 'jobs' | 'plans'
   const [period, setPeriod]     = useState('month')
   const [platform, setPlatform] = useState('Alle')
@@ -2143,6 +2151,11 @@ function StatistikTab({ week, year }) {
 
   return (
     <div className="space-y-6">
+
+      {/* KW nav — desktop only (mobile uses header) */}
+      <div className="hidden lg:flex items-center justify-between pb-2 border-b border-gray-100">
+        <WeekNav light week={week} year={year} onChange={onWeekChange} />
+      </div>
 
       {/* ── Datentyp-Toggle — ganz oben ─────────────────── */}
       <div className="flex gap-2 bg-gray-100 rounded-xl p-1">
@@ -2595,11 +2608,13 @@ export default function CreatorDashboard() {
             </div>
             <div>
               <div className="font-bold text-base leading-none">CreatorFlow</div>
-              <div className="text-xs text-white/70 mt-0.5">KW {week}</div>
+              <div className="text-xs text-white/70 mt-0.5 lg:hidden">KW {week}</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <WeekNav week={week} year={year} onChange={(w,y) => { setWeek(w); setYear(y) }} />
+            <div className="lg:hidden">
+              <WeekNav week={week} year={year} onChange={(w,y) => { setWeek(w); setYear(y) }} />
+            </div>
             <button onClick={handleLogout} className="text-xs text-white/70 hover:text-white">Abmelden</button>
           </div>
         </div>
@@ -2617,12 +2632,12 @@ export default function CreatorDashboard() {
       {/* Content area */}
       <div className="lg:flex-1 lg:overflow-hidden">
         {activeTab === 'Mein Content'
-          ? <MeinContentTab week={week} year={year} />
+          ? <MeinContentTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />
           : (
             <div className="max-w-3xl mx-auto px-6 py-6">
-              {activeTab === 'Aufträge'   && <AuftraegeTab week={week} year={year} />}
+              {activeTab === 'Aufträge'   && <AuftraegeTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
               {activeTab === 'Profil'     && <ProfilTab />}
-              {activeTab === 'Statistik'  && <StatistikTab week={week} year={year} />}
+              {activeTab === 'Statistik'  && <StatistikTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
             </div>
           )
         }
