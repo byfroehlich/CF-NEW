@@ -473,7 +473,7 @@ function AuftraegeTab({ week, year, onWeekChange }) {
 
   // ── Desktop 3-panel layout ─────────────────────────────────
   return (
-    <div className="flex h-full overflow-hidden -mx-4 lg:-mx-6">
+    <div className="flex h-full overflow-hidden">
 
       {/* LEFT SIDEBAR */}
       <div className="w-64 flex-shrink-0 border-r border-gray-200 bg-gray-50 flex flex-col overflow-y-auto">
@@ -2178,7 +2178,7 @@ function StatistikTab({ week, year, onWeekChange }) {
     <div className="space-y-6">
 
       {/* KW nav — desktop only, break out of padding to go full-width */}
-      <div className="hidden lg:block -mx-6 -mt-6 mb-2">
+      <div className="hidden lg:block mb-2">
         <WeekStrip week={week} year={year} onChange={onWeekChange} />
       </div>
 
