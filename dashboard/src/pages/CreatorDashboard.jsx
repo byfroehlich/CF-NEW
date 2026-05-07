@@ -23,6 +23,17 @@ const IcoFilm  = ({s='w-12 h-12'}) => <svg className={s} fill="none" viewBox="0 
 const IcoChart = ({s='w-12 h-12'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
 const IcoList  = ({s='w-4 h-4'}) => <svg className={s} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
 
+// ── Desktop breakpoint hook ──────────────────────────────────
+function useIsDesktop() {
+  const [desktop, setDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024)
+  useEffect(() => {
+    const handler = () => setDesktop(window.innerWidth >= 1024)
+    window.addEventListener('resize', handler)
+    return () => window.removeEventListener('resize', handler)
+  }, [])
+  return desktop
+}
+
 function getCurrentWeek() {
   const now = new Date()
   const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
@@ -529,129 +540,148 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, account
   )
 }
 
-// ── Plan Detail Modal ────────────────────────────────────────
-function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab, onPushRequest }) {
+// ── Plan Detail Content (shared between modal and desktop panel) ─
+function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab, isTopTab, onPushRequest, onClose }) {
   const [editing, setEditing] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const nxt = nextWeekOf(week, year)
   const busy = busyId === p.id
 
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl flex-shrink-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <PlatformIcon platform={p.platform} size="badge" />
+          <span className="text-xs font-medium text-gray-500 flex items-center gap-1">{p.partner_type === 'partner' ? <><IcoUsers /> Partner</> : <><IcoUser /> Solo</>}</span>
+          {p.carried_over_from && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">↩ Übertrag</span>}
+        </div>
+        <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors flex-shrink-0">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div className="px-5 py-5 space-y-4 overflow-y-auto flex-1">
+        {editing ? (
+          <PlanForm
+            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [] }}
+            onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
+            onCancel={() => setEditing(false)}
+            isPending={updateMut.isPending}
+          />
+        ) : (
+          <>
+            {p.pushed_to_week && (
+              <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                <span>→</span><span>Verschoben nach KW{p.pushed_to_week}</span>
+              </div>
+            )}
+            {p.title && <h3 className={`text-base font-semibold ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{p.title}</h3>}
+            {p.description && <p className="text-sm text-gray-600 whitespace-pre-wrap">{p.description}</p>}
+            {(p.requisiten || p.kleidung) && (
+              <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-1.5">
+                {p.requisiten && (
+                  <div className="text-sm"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Requisiten</span>{p.requisiten}</div>
+                )}
+                {p.kleidung && (
+                  <div className="text-sm"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Kleidung</span>{p.kleidung}</div>
+                )}
+              </div>
+            )}
+            {(p.location_tags || []).length > 0 && (
+              <div>
+                <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1.5">Location</span>
+                <div className="flex flex-wrap gap-1.5">
+                  {p.location_tags.map(tag => (
+                    <span key={tag} className="text-xs px-2 py-0.5 rounded-lg bg-sky-50 text-sky-600 font-medium border border-sky-100">
+                      {LOCATION_LABELS[tag]}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {p.source_link && (
+              <button onClick={() => setShowPreview(true)} className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-800 font-medium">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                Beispielvideo ansehen
+              </button>
+            )}
+            {showPreview && <VideoModal url={p.source_link} onClose={() => setShowPreview(false)} />}
+
+            {/* Aktionen */}
+            <div className="space-y-2 pt-1">
+              {!isIdeaTab && !isTopTab && (
+                <button onClick={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })} disabled={busy}
+                  className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${p.status === 'done' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-green-500 text-white hover:bg-green-600'}`}>
+                  {p.status === 'done' ? '↩ Als offen markieren' : '✓ Als fertig markieren'}
+                </button>
+              )}
+              {isIdeaTab || isTopTab ? (
+                <button onClick={() => { onClose(); onPushRequest && onPushRequest(p) }} disabled={busy}
+                  className="w-full py-2.5 rounded-xl text-sm font-semibold border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-50">
+                  → KW{week} einplanen
+                </button>
+              ) : p.pushed_to_week ? (
+                <button onClick={() => { undoPushMut.mutate({ id: p.id, allPlans }); onClose() }} disabled={busy}
+                  className="w-full py-2.5 rounded-xl text-sm font-medium border border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-50">
+                  ↩ Schieben rückgängig
+                </button>
+              ) : (
+                <button onClick={() => { pushMut.mutate(p); onClose() }} disabled={busy}
+                  className="w-full py-2.5 rounded-xl text-sm font-medium border border-indigo-300 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50">
+                  → KW{nxt.week} schieben
+                </button>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-gray-100">
+              <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+                <input type="checkbox" checked={p.visible_to_agency} disabled={busy}
+                  onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
+                  className="rounded accent-violet-600 disabled:opacity-50" />
+                Agentur sichtbar
+              </label>
+              <div className="flex items-center gap-3">
+                <button onClick={() => setEditing(true)} className="text-xs text-indigo-600 hover:underline font-medium">Bearbeiten</button>
+                {confirmDel ? (
+                  <>
+                    <button onClick={() => { deleteMut.mutate({ id: p.id, is_top_video: p.is_top_video, fromWoche: !isIdeaTab && !isTopTab }); onClose() }} className="text-xs text-white bg-red-500 px-2.5 py-1 rounded-lg font-bold">
+                      {!isIdeaTab && !isTopTab && p.is_top_video ? 'Aus Woche entfernen' : 'Löschen'}
+                    </button>
+                    <button onClick={() => setConfirmDel(false)} className="text-xs text-gray-500">Abbrechen</button>
+                  </>
+                ) : (
+                  <button onClick={() => setConfirmDel(true)} className="text-xs text-red-400 hover:underline">Löschen</button>
+                )}
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Plan Detail Modal ────────────────────────────────────────
+function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab, isTopTab, onPushRequest }) {
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
          onClick={onClose}>
       <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-y-auto"
            style={{ maxHeight: '85dvh' }} onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl">
-          <div className="flex items-center gap-2 flex-wrap">
-            <PlatformIcon platform={p.platform} size="badge" />
-            <span className="text-xs font-medium text-gray-500 flex items-center gap-1">{p.partner_type === 'partner' ? <><IcoUsers /> Partner</> : <><IcoUser /> Solo</>}</span>
-            {p.carried_over_from && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">↩ Übertrag</span>}
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors flex-shrink-0">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-
-        <div className="px-5 py-5 space-y-4">
-          {editing ? (
-            <PlanForm
-              initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [] }}
-              onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
-              onCancel={() => setEditing(false)}
-              isPending={updateMut.isPending}
-            />
-          ) : (
-            <>
-              {p.pushed_to_week && (
-                <div className="flex items-center gap-1.5 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                  <span>→</span><span>Verschoben nach KW{p.pushed_to_week}</span>
-                </div>
-              )}
-              {p.title && <h3 className={`text-base font-semibold ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>{p.title}</h3>}
-              {p.description && <p className="text-sm text-gray-600 whitespace-pre-wrap">{p.description}</p>}
-              {(p.requisiten || p.kleidung) && (
-                <div className="bg-gray-50 rounded-xl px-4 py-3 space-y-1.5">
-                  {p.requisiten && (
-                    <div className="text-sm"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Requisiten</span>{p.requisiten}</div>
-                  )}
-                  {p.kleidung && (
-                    <div className="text-sm"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Kleidung</span>{p.kleidung}</div>
-                  )}
-                </div>
-              )}
-              {(p.location_tags || []).length > 0 && (
-                <div>
-                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1.5">Location</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {p.location_tags.map(tag => (
-                      <span key={tag} className="text-xs px-2 py-0.5 rounded-lg bg-sky-50 text-sky-600 font-medium border border-sky-100">
-                        {LOCATION_LABELS[tag]}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {p.source_link && (
-                <button onClick={() => setShowPreview(true)} className="flex items-center gap-1.5 text-sm text-violet-600 hover:text-violet-800 font-medium">
-                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                  Beispielvideo ansehen
-                </button>
-              )}
-              {showPreview && <VideoModal url={p.source_link} onClose={() => setShowPreview(false)} />}
-
-              {/* Aktionen */}
-              <div className="space-y-2 pt-1">
-                {!isIdeaTab && (
-                  <button onClick={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })} disabled={busy}
-                    className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${p.status === 'done' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-green-500 text-white hover:bg-green-600'}`}>
-                    {p.status === 'done' ? '↩ Als offen markieren' : '✓ Als fertig markieren'}
-                  </button>
-                )}
-                {isIdeaTab ? (
-                  <button onClick={() => { onClose(); onPushRequest && onPushRequest(p) }} disabled={busy}
-                    className="w-full py-2.5 rounded-xl text-sm font-semibold border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-50">
-                    → KW{week} einplanen
-                  </button>
-                ) : p.pushed_to_week ? (
-                  <button onClick={() => { undoPushMut.mutate({ id: p.id, allPlans }); onClose() }} disabled={busy}
-                    className="w-full py-2.5 rounded-xl text-sm font-medium border border-orange-300 text-orange-600 hover:bg-orange-50 disabled:opacity-50">
-                    ↩ Schieben rückgängig
-                  </button>
-                ) : (
-                  <button onClick={() => { pushMut.mutate(p); onClose() }} disabled={busy}
-                    className="w-full py-2.5 rounded-xl text-sm font-medium border border-indigo-300 text-indigo-600 hover:bg-indigo-50 disabled:opacity-50">
-                    → KW{nxt.week} schieben
-                  </button>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
-                  <input type="checkbox" checked={p.visible_to_agency} disabled={busy}
-                    onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
-                    className="rounded accent-violet-600 disabled:opacity-50" />
-                  Agentur sichtbar
-                </label>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setEditing(true)} className="text-xs text-indigo-600 hover:underline font-medium">Bearbeiten</button>
-                  {confirmDel ? (
-                    <>
-                      <button onClick={() => { deleteMut.mutate({ id: p.id, is_top_video: p.is_top_video, fromWoche: !isIdeaTab }); onClose() }} className="text-xs text-white bg-red-500 px-2.5 py-1 rounded-lg font-bold">
-                    {!isIdeaTab && p.is_top_video ? 'Aus Woche entfernen' : 'Löschen'}
-                  </button>
-                      <button onClick={() => setConfirmDel(false)} className="text-xs text-gray-500">Abbrechen</button>
-                    </>
-                  ) : (
-                    <button onClick={() => setConfirmDel(true)} className="text-xs text-red-400 hover:underline">Löschen</button>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+        <PlanDetailContent
+          p={p} week={week} year={year}
+          updateMut={updateMut} deleteMut={deleteMut}
+          pushMut={pushMut} undoPushMut={undoPushMut}
+          allPlans={allPlans}
+          busyId={busyId}
+          isIdeaTab={isIdeaTab}
+          isTopTab={isTopTab}
+          onPushRequest={onPushRequest}
+          onClose={onClose}
+        />
       </div>
     </div>,
     document.body
