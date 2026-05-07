@@ -1636,7 +1636,7 @@ function MeinContentTab({ week, year, onWeekChange }) {
         <div className="hidden lg:block flex-shrink-0">
           <WeekStrip week={week} year={year} onChange={onWeekChange} />
         </div>
-        <div className="space-y-4 lg:p-6 lg:overflow-y-auto lg:flex-1">
+        <div className="space-y-4 px-4 py-5 lg:px-6 lg:py-6 lg:overflow-y-auto lg:flex-1">
 
           {/* Stat cards */}
           <div className="grid grid-cols-3 gap-3">
