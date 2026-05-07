@@ -946,193 +946,523 @@ function MeinContentTab({ week, year }) {
 
   const switchTab = val => { setSubTab(val); setShowNew(false); setEditId(null); setStatusFilter('Alle') }
 
-  return (
-    <div className="space-y-4">
-      {/* Stat-Karten (immer KW-basiert) */}
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Gesamt"   value={gesamt}   color="gray" />
-        <StatCard label="Offen"    value={offen}    color="red" />
-        <StatCard label="Erledigt" value={erledigt} color="green" />
-      </div>
+  const isDesktop = useIsDesktop()
 
-      {/* Account-Selector */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</p>
-          <div className="flex items-center gap-2">
-            {!editAccountMode && (
-              <button onClick={() => setShowNewAccount(v => !v)}
-                className="text-xs text-violet-600 hover:text-violet-800 font-medium">
-                {showNewAccount ? 'Abbrechen' : '+ Neu'}
-              </button>
-            )}
-            {accounts.length > 0 && (
-              <button onClick={() => { setEditAccountMode(v => !v); setRenamingId(null); setShowNewAccount(false) }}
-                className="text-xs text-gray-500 hover:text-gray-700 font-medium">
-                {editAccountMode ? 'Fertig' : 'Bearbeiten'}
-              </button>
-            )}
-          </div>
+  // Helper: compute active filter count for the filter button badge
+  const activeFilterCount = (partnerFilter !== 'Alle' ? 1 : 0)
+    + (subTab === 'woche' && statusFilter !== 'Alle' ? 1 : 0)
+    + ((subTab === 'ideen' || subTab === 'top') && accountFilter ? 1 : 0)
+    + (locationFilter.length > 0 ? 1 : 0)
+
+  // The plan list (shared between mobile and desktop center panel)
+  const planListContent = (
+    <>
+      {weekError && subTab === 'woche' ? (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          Fehler: {weekErr?.response?.data?.detail || weekErr?.response?.data?.error || weekErr?.message}
         </div>
-
-        {showNewAccount && !editAccountMode && (
-          <div className="flex gap-2">
-            <input
-              value={newAccountName}
-              onChange={e => setNewAccountName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && newAccountName.trim()) addAccountMut.mutate(newAccountName.trim()) }}
-              placeholder="Account-Name…"
-              autoFocus
-              className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
+      ) : isLoading ? (
+        <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>
+      ) : plans.length === 0 ? (
+        <div className="text-center py-10">
+          <div className="text-gray-200 mb-3">{subTab === 'ideen' ? <IcoBulb s="w-12 h-12" /> : subTab === 'top' ? <IcoStar s="w-12 h-12" /> : <IcoFilm />}</div>
+          <p className="text-gray-400 text-sm">
+            {subTab === 'ideen' ? 'Noch keine Ideen gespeichert' : subTab === 'top' ? 'Noch keine Top-Videos markiert' : `Keine Pläne für KW${week}`}
+          </p>
+        </div>
+      ) : viewMode === 'list' ? (
+        <div className="space-y-1.5">
+          {plans.map(p => (
+            <PlanListRow
+              key={p.id}
+              p={p}
+              isIdeaTab={subTab !== 'woche'}
+              isTopTab={subTab === 'top'}
+              busy={busyId === p.id}
+              updateMut={updateMut}
+              accounts={accounts}
+              onClick={() => { setDetailPlan(p); setShowNew(false) }}
             />
-            <button
-              onClick={() => newAccountName.trim() && addAccountMut.mutate(newAccountName.trim())}
-              disabled={addAccountMut.isPending || !newAccountName.trim()}
-              className="px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg disabled:opacity-50">
-              {addAccountMut.isPending ? '…' : 'Anlegen'}
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {plans.map((p, idx) => (
+            <PlanCard
+              key={p.id}
+              p={p} idx={idx}
+              week={week} year={year}
+              editId={editId} setEditId={setEditId}
+              updateMut={updateMut} deleteMut={deleteMut} pushMut={pushMut} undoPushMut={undoPushMut}
+              allPlans={allRaw}
+              busyId={busyId}
+              showWeekBadge={subTab !== 'woche'}
+              isIdeaTab={subTab === 'ideen'}
+              isTopTab={subTab === 'top'}
+              accounts={accounts}
+              onPushRequest={handlePushRequest}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  )
 
-        {editAccountMode ? (
-          /* Edit-Modus: umbenennen + löschen */
-          <div className="space-y-1.5">
-            {accounts.map(acc => (
-              <div key={acc.id} className="flex items-center gap-2">
-                {renamingId === acc.id ? (
-                  <>
-                    <input
-                      value={renameValue}
-                      onChange={e => setRenameValue(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && renameValue.trim()) renameAccountMut.mutate({ id: acc.id, name: renameValue.trim() }) }}
-                      autoFocus
-                      className="flex-1 px-2.5 py-1.5 border border-indigo-400 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                    />
-                    <button onClick={() => renameValue.trim() && renameAccountMut.mutate({ id: acc.id, name: renameValue.trim() })}
-                      disabled={renameAccountMut.isPending || !renameValue.trim()}
-                      className="px-2.5 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg disabled:opacity-50">
-                      ✓
-                    </button>
-                    <button onClick={() => setRenamingId(null)}
-                      className="px-2 py-1.5 text-gray-400 hover:text-gray-600 text-xs">
-                      ✕
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => { setRenamingId(acc.id); setRenameValue(acc.name) }}
-                      className="flex-1 text-left px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors flex items-center gap-2">
-                      <IcoPen s="w-3 h-3" />{acc.name}
-                    </button>
-                    <button onClick={() => { if (window.confirm(`"${acc.name}" löschen?`)) delAccountMut.mutate(acc.id) }}
-                      className="p-1.5 text-red-300 hover:text-red-500 transition-colors" title="Löschen">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    </button>
-                  </>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          /* Normal-Modus: Account wählen */
-          <div className="overflow-x-auto scrollbar-hide">
-            <div className="flex gap-1.5 w-max">
-              <button onClick={() => setSelectedAccountId(null)}
-                className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${!selectedAccountId ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                Alle
-              </button>
-              {accounts.map(acc => (
-                <button key={acc.id} onClick={() => setSelectedAccountId(acc.id === selectedAccountId ? null : acc.id)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${selectedAccountId === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  {acc.name}
+  return (
+    <div className="space-y-4 lg:space-y-0 lg:flex lg:h-full lg:overflow-hidden">
+
+      {/* ─── LEFT SIDEBAR (desktop only) ─── */}
+      <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:flex-shrink-0 lg:bg-white lg:border-r lg:border-gray-200 lg:overflow-y-auto">
+        <div className="p-5 space-y-6 flex-1">
+
+          {/* Sub-tabs as nav buttons */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Ansicht</p>
+            <div className="space-y-0.5">
+              {([
+                ['woche', <IcoCal />, `KW${week}`],
+                ['ideen', <IcoBulb />, 'Ideen'],
+                ['top', <IcoStar f={subTab==='top'} />, 'Top-Videos'],
+              ]).map(([val, icon, lbl]) => (
+                <button key={val} onClick={() => switchTab(val)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors text-left ${subTab === val ? 'bg-indigo-50 text-indigo-700' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'}`}>
+                  {icon}<span>{lbl}</span>
                 </button>
               ))}
             </div>
           </div>
-        )}
 
-        {/* Hinweis wenn Alle + Accounts vorhanden + Wochenplan */}
-        {!selectedAccountId && accounts.length > 0 && subTab === 'woche' && (
-          <p className="text-xs text-gray-400 text-center py-1">Account wählen um einen neuen Plan anzulegen</p>
-        )}
-      </div>
-
-      {/* Unterreiter */}
-      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
-        {([
-          ['woche', <IcoCal />,              `KW${week}`],
-          ['ideen', <IcoBulb />,             'Ideen'],
-          ['top',   <IcoStar f={subTab==='top'} />, 'Top'],
-        ]).map(([val, icon, lbl]) => (
-          <button key={val} onClick={() => switchTab(val)}
-            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
-            {icon}{lbl}
-          </button>
-        ))}
-      </div>
-
-      {/* Filter-Zeile: Platform scrollbar + Filter-Button + View-Toggle */}
-      {(() => {
-        const activeFilterCount = (partnerFilter !== 'Alle' ? 1 : 0)
-          + (subTab === 'woche' && statusFilter !== 'Alle' ? 1 : 0)
-          + ((subTab === 'ideen' || subTab === 'top') && accountFilter ? 1 : 0)
-          + (locationFilter.length > 0 ? 1 : 0)
-        return (
-          <div className="flex items-center gap-2">
-            {/* Platform Icons */}
-            <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
-              <div className="flex items-center gap-1.5 w-max">
-                <button onClick={() => setPlatform('Alle')}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex-shrink-0 ${platform === 'Alle' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
-                  Alle
+          {/* Account selector — desktop vertical style */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</p>
+              <div className="flex items-center gap-2">
+                {!editAccountMode && (
+                  <button onClick={() => setShowNewAccount(v => !v)} className="text-xs text-violet-600 hover:text-violet-800 font-medium">
+                    {showNewAccount ? 'Abbrechen' : '+ Neu'}
+                  </button>
+                )}
+                {accounts.length > 0 && (
+                  <button onClick={() => { setEditAccountMode(v => !v); setRenamingId(null); setShowNewAccount(false) }} className="text-xs text-gray-500 hover:text-gray-700 font-medium">
+                    {editAccountMode ? 'Fertig' : 'Bearbeiten'}
+                  </button>
+                )}
+              </div>
+            </div>
+            {showNewAccount && !editAccountMode && (
+              <div className="flex gap-2 mb-2">
+                <input value={newAccountName} onChange={e => setNewAccountName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && newAccountName.trim()) addAccountMut.mutate(newAccountName.trim()) }}
+                  placeholder="Account-Name…" autoFocus
+                  className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-violet-400" />
+                <button onClick={() => newAccountName.trim() && addAccountMut.mutate(newAccountName.trim())}
+                  disabled={addAccountMut.isPending || !newAccountName.trim()}
+                  className="px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg disabled:opacity-50">
+                  {addAccountMut.isPending ? '…' : 'Anlegen'}
                 </button>
-                {['IG','TK','OF','FL','ML'].map(p => (
-                  <PlatformIcon key={p} platform={p} size="filter" active={platform === p} onClick={() => setPlatform(p)} />
+              </div>
+            )}
+            {editAccountMode ? (
+              <div className="space-y-1">
+                {accounts.map(acc => (
+                  <div key={acc.id} className="flex items-center gap-2">
+                    {renamingId === acc.id ? (
+                      <>
+                        <input value={renameValue} onChange={e => setRenameValue(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter' && renameValue.trim()) renameAccountMut.mutate({ id: acc.id, name: renameValue.trim() }) }}
+                          autoFocus className="flex-1 px-2.5 py-1.5 border border-indigo-400 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400" />
+                        <button onClick={() => renameValue.trim() && renameAccountMut.mutate({ id: acc.id, name: renameValue.trim() })} disabled={renameAccountMut.isPending || !renameValue.trim()} className="px-2.5 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg disabled:opacity-50">✓</button>
+                        <button onClick={() => setRenamingId(null)} className="px-2 py-1.5 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                      </>
+                    ) : (
+                      <>
+                        <button onClick={() => { setRenamingId(acc.id); setRenameValue(acc.name) }}
+                          className="flex-1 text-left px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors flex items-center gap-2">
+                          <IcoPen s="w-3 h-3" />{acc.name}
+                        </button>
+                        <button onClick={() => { if (window.confirm(`"${acc.name}" löschen?`)) delAccountMut.mutate(acc.id) }} className="p-1.5 text-red-300 hover:text-red-500">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-0.5">
+                <button onClick={() => setSelectedAccountId(null)}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-colors ${!selectedAccountId ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                  Alle Accounts
+                </button>
+                {accounts.map(acc => (
+                  <button key={acc.id} onClick={() => setSelectedAccountId(acc.id === selectedAccountId ? null : acc.id)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-colors ${selectedAccountId === acc.id ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    {acc.name}
+                  </button>
+                ))}
+                {!selectedAccountId && accounts.length > 0 && subTab === 'woche' && (
+                  <p className="text-xs text-gray-400 px-3 pt-1">Account wählen um einen neuen Plan anzulegen</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Partner filter (vertical list) */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Art</p>
+            <div className="space-y-0.5">
+              {[['Alle',null,'Alle'],['solo',<IcoUser />,'Solo'],['partner',<IcoUsers />,'Partner']].map(([val,icon,lbl]) => (
+                <button key={val} onClick={() => setPartnerFilter(val)}
+                  className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-colors ${partnerFilter === val ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                  {icon}<span>{lbl}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Status filter (Woche only) */}
+          {subTab === 'woche' && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Status</p>
+              <div className="space-y-0.5">
+                {[['Alle','Alle'],['geplant','Geplant'],['fertig','✓ Fertig'],['geschoben','→ Geschoben']].map(([val,lbl]) => (
+                  <button key={val} onClick={() => setStatusFilter(val)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-colors ${statusFilter === val ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    {lbl}
+                  </button>
                 ))}
               </div>
             </div>
+          )}
 
-            {/* Filter-Button */}
-            <button onClick={() => setShowFilterSheet(true)}
-              className={`relative flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors ${activeFilterCount > 0 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2"/>
-              </svg>
-              Filter
-              {activeFilterCount > 0 && (
-                <span className="bg-white text-indigo-600 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center leading-none">
-                  {activeFilterCount}
-                </span>
-              )}
+          {/* Location filter (multi-select chips) */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Location</p>
+            <div className="flex flex-wrap gap-1.5">
+              {LOCATION_TAGS.map(tag => {
+                const active = locationFilter.includes(tag)
+                return (
+                  <button key={tag}
+                    onClick={() => setLocationFilter(prev => active ? prev.filter(t => t !== tag) : [...prev, tag])}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${active ? 'bg-sky-500 text-white border-sky-500' : 'bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                    {LOCATION_LABELS[tag]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* Account filter for Ideen/Top */}
+          {(subTab === 'ideen' || subTab === 'top') && accounts.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Account-Filter</p>
+              <div className="space-y-0.5">
+                <button onClick={() => setAccountFilter(null)}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-colors ${!accountFilter ? 'bg-gray-800 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                  Alle
+                </button>
+                {accounts.map(acc => (
+                  <button key={acc.id} onClick={() => setAccountFilter(acc.id === accountFilter ? null : acc.id)}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-colors ${accountFilter === acc.id ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                    {acc.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+
+        {/* Reset button — only when filters active */}
+        {(partnerFilter !== 'Alle' || statusFilter !== 'Alle' || accountFilter || locationFilter.length > 0) && (
+          <div className="px-5 pb-5 border-t border-gray-100 pt-4">
+            <button onClick={() => { setPartnerFilter('Alle'); setStatusFilter('Alle'); setAccountFilter(null); setLocationFilter([]) }}
+              className="w-full py-2 text-sm text-red-400 hover:text-red-600 font-medium rounded-xl hover:bg-red-50 transition-colors">
+              Filter zurücksetzen
             </button>
+          </div>
+        )}
+      </aside>
 
-            {/* View-Toggle */}
-            <div className="flex flex-shrink-0 bg-gray-100 rounded-lg p-0.5 gap-0.5">
-              <button onClick={() => setViewMode('list')}
-                className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+      {/* ─── CENTER CONTENT ─── */}
+      <div className="lg:flex-1 lg:min-w-0 lg:overflow-y-auto">
+        <div className="space-y-4 lg:p-6">
+
+          {/* Stat cards */}
+          <div className="grid grid-cols-3 gap-3">
+            <StatCard label="Gesamt"   value={gesamt}   color="gray" />
+            <StatCard label="Offen"    value={offen}    color="red" />
+            <StatCard label="Erledigt" value={erledigt} color="green" />
+          </div>
+
+          {/* MOBILE ONLY: account selector + sub-tabs + filter row */}
+          <div className="lg:hidden space-y-4">
+            {/* Account-Selector */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Account</p>
+                <div className="flex items-center gap-2">
+                  {!editAccountMode && (
+                    <button onClick={() => setShowNewAccount(v => !v)}
+                      className="text-xs text-violet-600 hover:text-violet-800 font-medium">
+                      {showNewAccount ? 'Abbrechen' : '+ Neu'}
+                    </button>
+                  )}
+                  {accounts.length > 0 && (
+                    <button onClick={() => { setEditAccountMode(v => !v); setRenamingId(null); setShowNewAccount(false) }}
+                      className="text-xs text-gray-500 hover:text-gray-700 font-medium">
+                      {editAccountMode ? 'Fertig' : 'Bearbeiten'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {showNewAccount && !editAccountMode && (
+                <div className="flex gap-2">
+                  <input
+                    value={newAccountName}
+                    onChange={e => setNewAccountName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && newAccountName.trim()) addAccountMut.mutate(newAccountName.trim()) }}
+                    placeholder="Account-Name…"
+                    autoFocus
+                    className="flex-1 px-3 py-1.5 border border-gray-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
+                  />
+                  <button
+                    onClick={() => newAccountName.trim() && addAccountMut.mutate(newAccountName.trim())}
+                    disabled={addAccountMut.isPending || !newAccountName.trim()}
+                    className="px-3 py-1.5 bg-violet-600 text-white text-xs font-medium rounded-lg disabled:opacity-50">
+                    {addAccountMut.isPending ? '…' : 'Anlegen'}
+                  </button>
+                </div>
+              )}
+
+              {editAccountMode ? (
+                <div className="space-y-1.5">
+                  {accounts.map(acc => (
+                    <div key={acc.id} className="flex items-center gap-2">
+                      {renamingId === acc.id ? (
+                        <>
+                          <input
+                            value={renameValue}
+                            onChange={e => setRenameValue(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter' && renameValue.trim()) renameAccountMut.mutate({ id: acc.id, name: renameValue.trim() }) }}
+                            autoFocus
+                            className="flex-1 px-2.5 py-1.5 border border-indigo-400 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                          />
+                          <button onClick={() => renameValue.trim() && renameAccountMut.mutate({ id: acc.id, name: renameValue.trim() })}
+                            disabled={renameAccountMut.isPending || !renameValue.trim()}
+                            className="px-2.5 py-1.5 bg-indigo-600 text-white text-xs font-medium rounded-lg disabled:opacity-50">
+                            ✓
+                          </button>
+                          <button onClick={() => setRenamingId(null)}
+                            className="px-2 py-1.5 text-gray-400 hover:text-gray-600 text-xs">
+                            ✕
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => { setRenamingId(acc.id); setRenameValue(acc.name) }}
+                            className="flex-1 text-left px-3 py-1.5 rounded-lg border border-gray-200 text-xs text-gray-700 hover:border-indigo-300 hover:bg-indigo-50 transition-colors flex items-center gap-2">
+                            <IcoPen s="w-3 h-3" />{acc.name}
+                          </button>
+                          <button onClick={() => { if (window.confirm(`"${acc.name}" löschen?`)) delAccountMut.mutate(acc.id) }}
+                            className="p-1.5 text-red-300 hover:text-red-500 transition-colors" title="Löschen">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="overflow-x-auto scrollbar-hide">
+                  <div className="flex gap-1.5 w-max">
+                    <button onClick={() => setSelectedAccountId(null)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${!selectedAccountId ? 'bg-gray-800 text-white border-gray-800' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      Alle
+                    </button>
+                    {accounts.map(acc => (
+                      <button key={acc.id} onClick={() => setSelectedAccountId(acc.id === selectedAccountId ? null : acc.id)}
+                        className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors whitespace-nowrap ${selectedAccountId === acc.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                        {acc.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!selectedAccountId && accounts.length > 0 && subTab === 'woche' && (
+                <p className="text-xs text-gray-400 text-center py-1">Account wählen um einen neuen Plan anzulegen</p>
+              )}
+            </div>
+
+            {/* Unterreiter */}
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              {([
+                ['woche', <IcoCal />,              `KW${week}`],
+                ['ideen', <IcoBulb />,             'Ideen'],
+                ['top',   <IcoStar f={subTab==='top'} />, 'Top'],
+              ]).map(([val, icon, lbl]) => (
+                <button key={val} onClick={() => switchTab(val)}
+                  className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                  {icon}{lbl}
+                </button>
+              ))}
+            </div>
+
+            {/* Filter-Zeile: Platform scrollbar + Filter-Button + View-Toggle */}
+            <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+                <div className="flex items-center gap-1.5 w-max">
+                  <button onClick={() => setPlatform('Alle')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex-shrink-0 ${platform === 'Alle' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                    Alle
+                  </button>
+                  {['IG','TK','OF','FL','ML'].map(p => (
+                    <PlatformIcon key={p} platform={p} size="filter" active={platform === p} onClick={() => setPlatform(p)} />
+                  ))}
+                </div>
+              </div>
+              <button onClick={() => setShowFilterSheet(true)}
+                className={`relative flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors ${activeFilterCount > 0 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2"/>
+                </svg>
+                Filter
+                {activeFilterCount > 0 && (
+                  <span className="bg-white text-indigo-600 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center leading-none">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+              <div className="flex flex-shrink-0 bg-gray-100 rounded-lg p-0.5 gap-0.5">
+                <button onClick={() => setViewMode('list')}
+                  className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                </button>
+                <button onClick={() => setViewMode('full')}
+                  className={`p-1.5 rounded-md transition-colors ${viewMode === 'full' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+          {/* END MOBILE ONLY */}
+
+          {/* DESKTOP ONLY: platform filter row + view toggle + new plan button */}
+          <div className="hidden lg:flex items-center gap-3 pb-4 border-b border-gray-100">
+            <div className="flex-1 flex items-center gap-1.5 overflow-x-auto scrollbar-hide">
+              <button onClick={() => setPlatform('Alle')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex-shrink-0 ${platform === 'Alle' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>Alle</button>
+              {['IG','TK','OF','FL','ML'].map(p => (
+                <PlatformIcon key={p} platform={p} size="filter" active={platform === p} onClick={() => setPlatform(p)} />
+              ))}
+            </div>
+            <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5 flex-shrink-0">
+              <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
               </button>
-              <button onClick={() => setViewMode('full')}
-                className={`p-1.5 rounded-md transition-colors ${viewMode === 'full' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+              <button onClick={() => setViewMode('full')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'full' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
               </button>
             </div>
+            {subTab !== 'top' && canCreate && (
+              <button onClick={() => { setShowNew(v => !v); setDetailPlan(null) }}
+                className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                {subTab === 'ideen' ? 'Neue Idee' : 'Neuer Plan'}
+              </button>
+            )}
           </div>
-        )
-      })()}
 
+          {/* Hint banners */}
+          {subTab === 'ideen' && (
+            <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-xs text-indigo-600 flex items-center gap-2">
+              <IcoBulb s="w-3.5 h-3.5 flex-shrink-0" /> Alle Ideen aus allen Accounts und Wochen — zeitunabhängig speichern, später einplanen.
+            </div>
+          )}
+          {subTab === 'top' && (
+            <div className="bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 text-xs text-yellow-700 flex items-center gap-2">
+              <IcoStar s="w-3.5 h-3.5 flex-shrink-0" f={true} /> Mit dem Stern markierte Videos aus allen Accounts — deine Top-Performance-Inhalte.
+            </div>
+          )}
+
+          {/* Plan list */}
+          {planListContent}
+
+          {/* "New plan" dashed button (MOBILE ONLY, below list) */}
+          <div className="lg:hidden">
+            {subTab !== 'top' && canCreate && (
+              <button onClick={() => setShowNew(v => !v)} className="w-full py-4 rounded-2xl border-2 border-dashed border-indigo-200 text-indigo-400 text-sm font-medium hover:border-indigo-400 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2">
+                + {subTab === 'ideen' ? 'Neue Idee anlegen' : 'Neuer Content-Plan'}
+              </button>
+            )}
+          </div>
+
+        </div>
+      </div>
+
+      {/* ─── RIGHT PANEL (desktop only) ─── */}
+      <div className="hidden lg:flex lg:flex-col lg:w-96 lg:flex-shrink-0 lg:border-l lg:border-gray-200 lg:bg-white lg:overflow-y-auto">
+        {showNew ? (
+          <div className="p-5 flex-1">
+            <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-100">
+              <h3 className="font-semibold text-gray-900 flex items-center gap-2 text-sm">
+                {subTab === 'ideen' ? <><IcoBulb s="w-4 h-4" /> Neue Idee</> : <><IcoCal s="w-4 h-4" /> Neuer Plan KW{week}</>}
+              </h3>
+              <button onClick={() => setShowNew(false)} className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <PlanForm
+              initial={subTab === 'ideen' ? EMPTY_IDEA : EMPTY_WEEK}
+              onSave={f => createMut.mutate(f)}
+              onCancel={() => setShowNew(false)}
+              isPending={createMut.isPending}
+              hideStatus={subTab === 'ideen'}
+            />
+          </div>
+        ) : detailPlan ? (
+          <PlanDetailContent
+            p={detailPlan}
+            week={week} year={year}
+            updateMut={updateMut} deleteMut={deleteMut}
+            pushMut={pushMut} undoPushMut={undoPushMut}
+            allPlans={allRaw}
+            busyId={busyId}
+            isIdeaTab={subTab !== 'woche'}
+            isTopTab={subTab === 'top'}
+            onPushRequest={handlePushRequest}
+            onClose={() => setDetailPlan(null)}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
+            <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-3">
+              <IcoList s="w-8 h-8 text-gray-200" />
+            </div>
+            <p className="text-sm font-medium text-gray-400">Plan auswählen</p>
+            <p className="text-xs text-gray-300 mt-1">Klicke auf einen Plan in der Liste</p>
+            {subTab !== 'top' && canCreate && (
+              <button onClick={() => setShowNew(true)}
+                className="mt-5 flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+                {subTab === 'ideen' ? 'Neue Idee' : 'Neuer Plan'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Mobile-only portals ─── */}
       {/* Filter Bottom-Sheet */}
-      {showFilterSheet && createPortal(
+      {showFilterSheet && !isDesktop && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={() => setShowFilterSheet(false)}>
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative bg-white rounded-t-3xl w-full max-w-lg shadow-2xl pb-safe"
                onClick={e => e.stopPropagation()}>
-            {/* Handle */}
             <div className="flex justify-center pt-3 pb-1">
               <div className="w-10 h-1 rounded-full bg-gray-300" />
             </div>
             <div className="px-5 pt-2 pb-6 space-y-5">
-              {/* Header */}
               <div className="flex items-center justify-between">
                 <p className="text-base font-bold text-gray-900">Filter</p>
                 <button
@@ -1141,8 +1471,6 @@ function MeinContentTab({ week, year }) {
                   Zurücksetzen
                 </button>
               </div>
-
-              {/* Solo / Partner */}
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Art</p>
                 <div className="flex gap-2">
@@ -1158,8 +1486,6 @@ function MeinContentTab({ week, year }) {
                   ))}
                 </div>
               </div>
-
-              {/* Status — nur Wochenplan */}
               {subTab === 'woche' && (
                 <div>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Status</p>
@@ -1173,8 +1499,6 @@ function MeinContentTab({ week, year }) {
                   </div>
                 </div>
               )}
-
-              {/* Account — Ideen + Top */}
               {(subTab === 'ideen' || subTab === 'top') && accounts.length > 0 && (
                 <div>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Account</p>
@@ -1192,8 +1516,6 @@ function MeinContentTab({ week, year }) {
                   </div>
                 </div>
               )}
-
-              {/* Location Tags — Multi-Select */}
               <div>
                 <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Location</p>
                 <div className="flex flex-wrap gap-2">
@@ -1212,8 +1534,6 @@ function MeinContentTab({ week, year }) {
                   <p className="text-xs text-gray-400 mt-1.5">Mehrfachauswahl: zeigt Videos mit allen gewählten Tags</p>
                 )}
               </div>
-
-              {/* Fertig-Button */}
               <button onClick={() => setShowFilterSheet(false)}
                 className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-2xl hover:bg-indigo-700 transition-colors">
                 Anwenden
@@ -1224,20 +1544,8 @@ function MeinContentTab({ week, year }) {
         document.body
       )}
 
-      {/* Hinweisbanner */}
-      {subTab === 'ideen' && (
-        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-xs text-indigo-600 flex items-center gap-2">
-          <IcoBulb s="w-3.5 h-3.5 flex-shrink-0" /> Alle Ideen aus allen Accounts und Wochen — zeitunabhängig speichern, später einplanen.
-        </div>
-      )}
-      {subTab === 'top' && (
-        <div className="bg-yellow-50 border border-yellow-100 rounded-xl px-3 py-2 text-xs text-yellow-700 flex items-center gap-2">
-          <IcoStar s="w-3.5 h-3.5 flex-shrink-0" f={true} /> Mit dem Stern markierte Videos aus allen Accounts — deine Top-Performance-Inhalte.
-        </div>
-      )}
-
-      {/* Neuer Eintrag — schwebendes Modal */}
-      {showNew && createPortal(
+      {/* New plan modal (mobile only) */}
+      {showNew && !isDesktop && createPortal(
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
              onClick={() => setShowNew(false)}>
           <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-y-auto"
@@ -1266,58 +1574,8 @@ function MeinContentTab({ week, year }) {
         document.body
       )}
 
-      {/* Liste */}
-      {weekError && subTab === 'woche' ? (
-        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-          Fehler: {weekErr?.response?.data?.detail || weekErr?.response?.data?.error || weekErr?.message}
-        </div>
-      ) : isLoading ? (
-        <p className="text-center text-gray-400 text-sm py-8">Lädt…</p>
-      ) : plans.length === 0 ? (
-        <div className="text-center py-10">
-          <div className="text-gray-200 mb-3">{subTab === 'ideen' ? <IcoBulb s="w-12 h-12" /> : subTab === 'top' ? <IcoStar s="w-12 h-12" /> : <IcoFilm />}</div>
-          <p className="text-gray-400 text-sm">
-            {subTab === 'ideen' ? 'Noch keine Ideen gespeichert' : subTab === 'top' ? 'Noch keine Top-Videos markiert' : `Keine Pläne für KW${week}`}
-          </p>
-        </div>
-      ) : viewMode === 'list' ? (
-        <div className="space-y-1.5">
-          {plans.map(p => (
-            <PlanListRow
-              key={p.id}
-              p={p}
-              isIdeaTab={subTab !== 'woche'}
-              isTopTab={subTab === 'top'}
-              busy={busyId === p.id}
-              updateMut={updateMut}
-              accounts={accounts}
-              onClick={() => setDetailPlan(p)}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {plans.map((p, idx) => (
-            <PlanCard
-              key={p.id}
-              p={p} idx={idx}
-              week={week} year={year}
-              editId={editId} setEditId={setEditId}
-              updateMut={updateMut} deleteMut={deleteMut} pushMut={pushMut} undoPushMut={undoPushMut}
-              allPlans={allRaw}
-              busyId={busyId}
-              showWeekBadge={subTab !== 'woche'}
-              isIdeaTab={subTab === 'ideen'}
-              isTopTab={subTab === 'top'}
-              accounts={accounts}
-              onPushRequest={handlePushRequest}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Detail Modal (Listenansicht) */}
-      {detailPlan && (
+      {/* Detail Modal (mobile only) */}
+      {detailPlan && !isDesktop && (
         <PlanDetailModal
           p={detailPlan}
           week={week} year={year}
@@ -1327,11 +1585,12 @@ function MeinContentTab({ week, year }) {
           allPlans={allRaw}
           busyId={busyId}
           isIdeaTab={subTab !== 'woche'}
+          isTopTab={subTab === 'top'}
           onPushRequest={handlePushRequest}
         />
       )}
 
-      {/* Push-Dialog */}
+      {/* Push-Dialog — on both mobile and desktop */}
       {pushDialog && (
         <PushDialog
           plan={pushDialog.plan}
@@ -1345,10 +1604,10 @@ function MeinContentTab({ week, year }) {
         />
       )}
 
-      {/* FAB */}
+      {/* FAB (hidden on desktop) */}
       {subTab !== 'top' && canCreate && (
         <button onClick={() => setShowNew(v => !v)}
-          className="sm:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-14 h-14 bg-gradient-to-br from-violet-500 to-pink-500 text-white rounded-full shadow-lg shadow-violet-500/40 flex items-center justify-center hover:brightness-110 active:scale-95 transition-all">
+          className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-14 h-14 bg-gradient-to-br from-violet-500 to-pink-500 text-white rounded-full shadow-lg shadow-violet-500/40 flex items-center justify-center hover:brightness-110 active:scale-95 transition-all">
           {showNew
             ? <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
             : <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -1921,10 +2180,10 @@ export default function CreatorDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header mit eingebetteten Tab-Buttons */}
-      <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
-        <div className="flex items-center justify-between max-w-2xl mx-auto">
+    <div className="min-h-screen lg:h-screen lg:flex lg:flex-col bg-gray-50">
+      {/* Header — gradient, sticky, full width */}
+      <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 lg:flex-shrink-0 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
+        <div className="flex items-center justify-between lg:max-w-none lg:px-2">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
               <span className="text-white font-bold text-xs">CF</span>
@@ -1939,8 +2198,8 @@ export default function CreatorDashboard() {
             <button onClick={handleLogout} className="text-xs text-white/70 hover:text-white">Abmelden</button>
           </div>
         </div>
-        {/* Pill-Tabs */}
-        <div className="max-w-2xl mx-auto mt-4 flex gap-1 justify-center pb-1">
+        {/* Pill-Tabs — left-aligned on desktop */}
+        <div className="mt-4 flex gap-1 pb-1 lg:justify-start justify-center">
           {['Aufträge','Mein Content','Profil','Statistik'].map(t => (
             <button key={t} onClick={() => setActiveTab(t)}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
@@ -1950,11 +2209,18 @@ export default function CreatorDashboard() {
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-6">
-        {activeTab === 'Aufträge'    && <AuftraegeTab week={week} year={year} />}
-        {activeTab === 'Mein Content' && <MeinContentTab week={week} year={year} />}
-        {activeTab === 'Profil'      && <ProfilTab />}
-        {activeTab === 'Statistik'   && <StatistikTab week={week} year={year} />}
+      {/* Content area */}
+      <div className="lg:flex-1 lg:overflow-hidden">
+        {activeTab === 'Mein Content'
+          ? <MeinContentTab week={week} year={year} />
+          : (
+            <div className="max-w-3xl mx-auto px-6 py-6">
+              {activeTab === 'Aufträge'   && <AuftraegeTab week={week} year={year} />}
+              {activeTab === 'Profil'     && <ProfilTab />}
+              {activeTab === 'Statistik'  && <StatistikTab week={week} year={year} />}
+            </div>
+          )
+        }
       </div>
     </div>
   )
