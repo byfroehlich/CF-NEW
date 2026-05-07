@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto, getCreatorAccounts, createCreatorAccount, updateCreatorAccount, deleteCreatorAccount } from '../lib/api.js'
+import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto, getCreatorAccounts, createCreatorAccount, updateCreatorAccount, deleteCreatorAccount, updateJobStatus, updateJobMeta, getCombinedList } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -84,38 +84,264 @@ function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
   )
 }
 
+// ── Tag-Chip für Jobs (inline in der Liste) ──────────────────
+function JobTagRow({ job, onUpdate, busy }) {
+  const [open, setOpen] = useState(false)
+  const tags = job.location_tags || []
+  const hasTag = t => tags.includes(t)
+  const toggle = t => onUpdate({ location_tags: hasTag(t) ? tags.filter(x => x !== t) : [...tags, t] })
+  const togglePartner = () => onUpdate({ partner_type: job.partner_type === 'partner' ? 'solo' : 'partner' })
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+      <button onClick={togglePartner} disabled={busy}
+        className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border transition-colors disabled:opacity-40 ${job.partner_type === 'partner' ? 'bg-violet-100 text-violet-700 border-violet-200' : 'bg-gray-50 text-gray-400 border-gray-200 hover:border-gray-300'}`}>
+        {job.partner_type === 'partner' ? <IcoUsers s="w-3 h-3" /> : <IcoUser s="w-3 h-3" />}
+        {job.partner_type === 'partner' ? 'Partner' : 'Solo'}
+      </button>
+      {LOCATION_TAGS.map(t => (
+        <button key={t} onClick={() => toggle(t)} disabled={busy}
+          className={`text-xs px-2 py-0.5 rounded-lg border transition-colors disabled:opacity-40 ${hasTag(t) ? 'bg-sky-500 text-white border-sky-500' : 'bg-gray-50 text-gray-300 border-gray-200 hover:border-gray-300 hover:text-gray-500'}`}>
+          {LOCATION_LABELS[t]}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ── Aufträge Tab ─────────────────────────────────────────────
 function AuftraegeTab({ week, year }) {
-  const [platform, setPlatform] = useState('Alle')
-  const { data: summary } = useQuery({ queryKey: ['summary-creator', week, year], queryFn: () => getJobSummary({ week, year }) })
-  const { data: jobs = [], isLoading } = useQuery({ queryKey: ['jobs-creator', week, year, platform], queryFn: () => getJobs({ week, year, ...(platform !== 'Alle' && { platform }) }) })
+  const qc = useQueryClient()
+  const [subTab, setSubTab]       = useState('jobs')     // 'jobs' | 'combined'
+  const [platform, setPlatform]   = useState('Alle')
+  const [partnerFilter, setPartnerFilter] = useState('Alle')
+  const [locationFilter, setLocationFilter] = useState([])
+  const [showFilterSheet, setShowFilterSheet] = useState(false)
+
+  const { data: summary } = useQuery({
+    queryKey: ['summary-creator', week, year],
+    queryFn: () => getJobSummary({ week, year })
+  })
+  const { data: jobs = [], isLoading: jobsLoading } = useQuery({
+    queryKey: ['jobs-creator', week, year, platform],
+    queryFn: () => getJobs({ week, year, ...(platform !== 'Alle' && { platform }) })
+  })
+  const { data: combined = [], isLoading: combinedLoading } = useQuery({
+    queryKey: ['combined-creator', week, year, platform],
+    queryFn: () => getCombinedList({ week, year, ...(platform !== 'Alle' && { platform }) }),
+    enabled: subTab === 'combined',
+  })
+
+  const invJobs = () => {
+    qc.invalidateQueries({ queryKey: ['jobs-creator'] })
+    qc.invalidateQueries({ queryKey: ['combined-creator'] })
+    qc.invalidateQueries({ queryKey: ['summary-creator'] })
+  }
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status }) => updateJobStatus(id, status),
+    onSuccess: invJobs,
+  })
+  const metaMut = useMutation({
+    mutationFn: ({ id, ...data }) => updateJobMeta(id, data),
+    onSuccess: invJobs,
+  })
+  const planDoneMut = useMutation({
+    mutationFn: id => updateContentPlan(id, { status: 'done' }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['plans-creator'] })
+      qc.invalidateQueries({ queryKey: ['combined-creator'] })
+    },
+  })
+
+  const applyFilters = list => {
+    let out = list
+    if (partnerFilter !== 'Alle') out = out.filter(i => (i.partner_type || 'solo') === partnerFilter.toLowerCase())
+    if (locationFilter.length > 0) out = out.filter(i => locationFilter.every(t => (i.location_tags || []).includes(t)))
+    return out
+  }
+
+  const activeFilterCount = (partnerFilter !== 'Alle' ? 1 : 0) + (locationFilter.length > 0 ? 1 : 0)
+
+  const isLoading = subTab === 'jobs' ? jobsLoading : combinedLoading
+  const rawList   = subTab === 'jobs' ? jobs : combined
+  const list      = applyFilters(rawList)
+
+  const gesamt   = rawList.length
+  const offen    = rawList.filter(i => i._type === 'plan' ? i.status !== 'done' : !['confirmed','delivered'].includes(i.status)).length
+  const erledigt = rawList.filter(i => i._type === 'plan' ? i.status === 'done' : i.status === 'confirmed').length
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-3 gap-3">
-        <StatCard label="Gesamt"   value={summary?.total}  color="gray" />
-        <StatCard label="Offen"    value={summary?.open}   color="red" />
-        <StatCard label="Erledigt" value={summary?.confirmed} color="green" />
+      {/* Sub-Tabs */}
+      <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+        {[['jobs','Aufträge'],['combined','Kombiniert']].map(([val, lbl]) => (
+          <button key={val} onClick={() => setSubTab(val)}
+            className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}>
+            {lbl}
+          </button>
+        ))}
       </div>
-      <PlatformFilter value={platform} onChange={setPlatform} />
+
+      {/* Stat-Karten */}
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Gesamt"   value={gesamt}   color="gray" />
+        <StatCard label="Offen"    value={offen}    color="red" />
+        <StatCard label="Erledigt" value={erledigt} color="green" />
+      </div>
+
+      {/* Filter-Zeile */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+          <div className="flex items-center gap-1.5 w-max">
+            <button onClick={() => setPlatform('Alle')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex-shrink-0 ${platform === 'Alle' ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+              Alle
+            </button>
+            {['IG','TK','OF','FL','ML'].map(p => (
+              <PlatformIcon key={p} platform={p} size="filter" active={platform === p} onClick={() => setPlatform(p)} />
+            ))}
+          </div>
+        </div>
+        <button onClick={() => setShowFilterSheet(true)}
+          className={`relative flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition-colors ${activeFilterCount > 0 ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2"/></svg>
+          Filter
+          {activeFilterCount > 0 && (
+            <span className="bg-white text-indigo-600 text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{activeFilterCount}</span>
+          )}
+        </button>
+      </div>
+
+      {/* Filter Bottom Sheet */}
+      {showFilterSheet && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={() => setShowFilterSheet(false)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-t-3xl w-full max-w-lg shadow-2xl pb-safe" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-gray-300" /></div>
+            <div className="px-5 pt-2 pb-6 space-y-5">
+              <div className="flex items-center justify-between">
+                <p className="text-base font-bold text-gray-900">Filter</p>
+                <button onClick={() => { setPartnerFilter('Alle'); setLocationFilter([]) }} className="text-xs text-red-400 hover:text-red-600 font-medium">Zurücksetzen</button>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Art</p>
+                <div className="flex gap-2">
+                  {[['Alle',null,'Alle'],['solo',<IcoUser />,'Solo'],['partner',<IcoUsers />,'Partner']].map(([val,icon,lbl]) => (
+                    <button key={val} onClick={() => setPartnerFilter(val)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors flex items-center justify-center gap-1.5 ${partnerFilter === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                      {icon}{lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Location</p>
+                <div className="flex flex-wrap gap-2">
+                  {LOCATION_TAGS.map(tag => {
+                    const active = locationFilter.includes(tag)
+                    return (
+                      <button key={tag}
+                        onClick={() => setLocationFilter(prev => active ? prev.filter(t => t !== tag) : [...prev, tag])}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors ${active ? 'bg-sky-500 text-white border-sky-500' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                        {LOCATION_LABELS[tag]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <button onClick={() => setShowFilterSheet(false)} className="w-full py-3 bg-indigo-600 text-white font-semibold rounded-2xl hover:bg-indigo-700 transition-colors">Anwenden</button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Hinweis Kombiniert */}
+      {subTab === 'combined' && (
+        <div className="bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2 text-xs text-indigo-600 flex items-center gap-2">
+          <IcoList s="w-3.5 h-3.5 flex-shrink-0" /> Agentur-Aufträge <span className="w-2 h-2 rounded-sm bg-orange-400 flex-shrink-0 inline-block" /> und eigene Pläne <span className="w-2 h-2 rounded-sm bg-violet-400 flex-shrink-0 inline-block" /> in einer Liste
+        </div>
+      )}
+
+      {/* Liste */}
       {isLoading ? (
         <p className="text-center text-gray-400 text-sm py-12">Lädt…</p>
-      ) : jobs.length === 0 ? (
+      ) : list.length === 0 ? (
         <div className="text-center py-12">
           <div className="text-gray-200 mb-3"><IcoInbox /></div>
-          <p className="text-gray-400 text-sm">Keine Jobs für KW{week}</p>
+          <p className="text-gray-400 text-sm">Keine Einträge für KW{week}</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {jobs.map(j => (
-            <div key={j.id} className="bg-white rounded-xl border border-gray-200 p-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <PlatformIcon platform={j.platform} size="sm" />
-                {j.source_link && <a href={j.source_link} target="_blank" rel="noreferrer" className="text-xs text-violet-600 hover:underline">Beispiel</a>}
+        <div className="space-y-2">
+          {list.map(item => {
+            const isJob  = item._type !== 'plan'
+            const isDone = isJob ? item.status === 'confirmed' : item.status === 'done'
+            const busy   = (statusMut.isPending && statusMut.variables?.id === item.id)
+                        || (metaMut.isPending   && metaMut.variables?.id   === item.id)
+                        || (planDoneMut.isPending && planDoneMut.variables  === item.id)
+            return (
+              <div key={item.id}
+                className={`bg-white rounded-xl border border-l-4 p-3 transition-opacity ${isDone ? 'opacity-60' : ''} ${isJob ? 'border-l-orange-400' : 'border-l-violet-400'} border-gray-200`}>
+                <div className="flex items-center gap-2.5">
+                  {/* Abhak-Button */}
+                  <button
+                    onClick={() => {
+                      if (isJob) statusMut.mutate({ id: item.id, status: isDone ? 'open' : 'confirmed' })
+                      else if (!isDone) planDoneMut.mutate(item.id)
+                    }}
+                    disabled={busy}
+                    className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all active:scale-95 disabled:opacity-40
+                      ${isDone ? (isJob ? 'bg-orange-400 border-orange-400' : 'bg-violet-500 border-violet-500') : 'border-gray-300 hover:border-green-400 bg-white'}`}>
+                    {isDone && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>}
+                  </button>
+                  {/* Plattform */}
+                  <PlatformIcon platform={item.platform} size="badge" />
+                  {/* Typ-Badge */}
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md ${isJob ? 'bg-orange-50 text-orange-600' : 'bg-violet-50 text-violet-600'}`}>
+                    {isJob ? 'Auftrag' : 'Plan'}
+                  </span>
+                  {/* Titel / Inhalt */}
+                  <span className={`flex-1 text-sm truncate ${isDone ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+                    {item.title || item.content_type || <span className="text-gray-300 italic text-xs">Kein Titel</span>}
+                  </span>
+                  {/* Status-Badge (Jobs) */}
+                  {isJob && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[item.status]}`}>
+                      {STATUS_LABELS[item.status]}
+                    </span>
+                  )}
+                  {/* Plan-Status */}
+                  {!isJob && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${PLAN_COLORS[item.status]}`}>
+                      {PLAN_STATUS[item.status]}
+                    </span>
+                  )}
+                </div>
+                {/* Tag-Zeile (nur Jobs, nur Kombiniert-Tab) */}
+                {isJob && subTab === 'combined' && (
+                  <div className="pl-8">
+                    <JobTagRow job={item} busy={busy} onUpdate={data => metaMut.mutate({ id: item.id, ...data })} />
+                  </div>
+                )}
+                {/* Location-Tags anzeigen (wenn vorhanden) */}
+                {((item.location_tags || []).length > 0 || item.partner_type === 'partner') && !(isJob && subTab === 'combined') && (
+                  <div className="pl-8 flex flex-wrap gap-1 mt-1.5">
+                    {item.partner_type === 'partner' && (
+                      <span className="text-xs px-1.5 py-0.5 rounded-md bg-violet-50 text-violet-600 font-medium border border-violet-100 flex items-center gap-1">
+                        <IcoUsers s="w-3 h-3" />Partner
+                      </span>
+                    )}
+                    {(item.location_tags || []).map(t => (
+                      <span key={t} className="text-xs px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-600 font-medium border border-sky-100">
+                        {LOCATION_LABELS[t]}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
-              <span className={`text-xs px-2 py-1 rounded-full font-medium ${STATUS_COLORS[j.status]}`}>{STATUS_LABELS[j.status]}</span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

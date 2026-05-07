@@ -46,6 +46,8 @@ export const getJobSummary = params => api.get('/api/v1/jobs/summary', { params 
 export const getJobStats   = params => api.get('/api/v1/jobs/stats',   { params }).then(r => r.data)
 export const updateJobStatus = (id, status, note) =>
   api.patch(`/api/v1/jobs/${id}/status`, { status, note }).then(r => r.data)
+export const updateJobMeta = (id, data) => api.patch(`/api/v1/jobs/${id}`, data).then(r => r.data)
+export const getCombinedList = params => api.get('/api/v1/jobs/combined', { params }).then(r => r.data)
 export const createJob = data => api.post('/api/v1/jobs', data).then(r => r.data)
 
 // Creators

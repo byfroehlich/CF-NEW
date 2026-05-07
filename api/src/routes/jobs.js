@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import sql from '../db/client.js'
 import { requireAdmin, requireAgencyOrAdmin, requireAnyRole } from '../middleware/auth.js'
-import { validate, jobSchema, jobStatusSchema } from '../validation/schemas.js'
+import { validate, jobSchema, jobStatusSchema, jobMetaSchema } from '../validation/schemas.js'
 
 const router = Router()
 
@@ -264,6 +264,71 @@ router.patch('/:id/status', requireAnyRole, validate(jobStatusSchema), async (re
     res.json(job)
   } catch (err) {
     console.error('Status update error:', err)
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// PATCH /api/v1/jobs/:id — Creator taggt eigenen Job (partner_type, location_tags)
+router.patch('/:id', requireAnyRole, validate(jobMetaSchema), async (req, res) => {
+  try {
+    const { partner_type, location_tags } = req.body
+    const id = req.params.id
+
+    const [existing] = req.user.role === 'creator'
+      ? await sql`SELECT id FROM jobs WHERE id = ${id} AND creator_id = ${req.user.creator_id} AND deleted_at IS NULL`
+      : req.user.role === 'agency'
+        ? await sql`SELECT id FROM jobs WHERE id = ${id} AND agency_id = ${req.user.agency_id} AND deleted_at IS NULL`
+        : await sql`SELECT id FROM jobs WHERE id = ${id} AND deleted_at IS NULL`
+
+    if (!existing) return res.status(404).json({ error: 'Job nicht gefunden' })
+
+    const [job] = await sql`
+      UPDATE jobs SET
+        partner_type  = COALESCE(${partner_type ?? null}, partner_type),
+        location_tags = CASE WHEN ${'location_tags' in req.body}::boolean THEN ${location_tags ?? []} ELSE location_tags END
+      WHERE id = ${id}
+      RETURNING *
+    `
+    res.json(job)
+  } catch (err) {
+    console.error('Job patch error:', err)
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// GET /api/v1/jobs/combined — Creator: eigene Jobs + content_plans einer KW
+router.get('/combined', requireAnyRole, async (req, res) => {
+  const { week, year, platform } = req.query
+  const wk = week ? parseInt(week) : null
+  const yr = year ? parseInt(year) : null
+  const pf = platform && platform !== 'Alle' ? platform : null
+  try {
+    const creatorId = req.user.creator_id ?? null
+    if (!creatorId) return res.json([])
+
+    const [jobs, plans] = await Promise.all([
+      sql`
+        SELECT *, 'job' AS _type FROM jobs
+        WHERE creator_id = ${creatorId} AND deleted_at IS NULL
+          AND (${wk}::int IS NULL OR week_number = ${wk})
+          AND (${yr}::int IS NULL OR year = ${yr})
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        ORDER BY created_at DESC
+      `,
+      sql`
+        SELECT *, 'plan' AS _type FROM content_plans
+        WHERE creator_id = ${creatorId} AND deleted_at IS NULL
+          AND status != 'idea'
+          AND week_number IS NOT NULL
+          AND (${wk}::int IS NULL OR week_number = ${wk})
+          AND (${yr}::int IS NULL OR year = ${yr})
+          AND (${pf}::text IS NULL OR platform = ${pf})
+        ORDER BY created_at DESC
+      `,
+    ])
+    res.json([...jobs, ...plans])
+  } catch (err) {
+    console.error('Combined GET error:', err)
     res.status(500).json({ error: 'Serverfehler' })
   }
 })

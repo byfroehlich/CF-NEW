@@ -98,6 +98,11 @@ export const jobStatusSchema = z.object({
   note: z.string().optional(),
 })
 
+export const jobMetaSchema = z.object({
+  partner_type:  z.enum(['solo','partner']).optional(),
+  location_tags: z.array(z.enum(['outdoor','indoor','auto','stadt'])).optional(),
+})
+
 export const contentPlanSchema = z.object({
   week_number: z.number().int().min(1).max(53),
   year: z.number().int().min(2024),
