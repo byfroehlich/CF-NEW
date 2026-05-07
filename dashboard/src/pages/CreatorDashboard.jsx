@@ -1832,14 +1832,6 @@ function MeinContentTab({ week, year, onWeekChange }) {
           {/* Plan list */}
           {planListContent}
 
-          {/* "New plan" dashed button (MOBILE ONLY, below list) */}
-          <div className="lg:hidden">
-            {subTab !== 'top' && canCreate && (
-              <button onClick={() => setShowNew(v => !v)} className="w-full py-4 rounded-2xl border-2 border-dashed border-indigo-200 text-indigo-400 text-sm font-medium hover:border-indigo-400 hover:text-indigo-600 transition-colors flex items-center justify-center gap-2">
-                + {subTab === 'ideen' ? 'Neue Idee anlegen' : 'Neuer Content-Plan'}
-              </button>
-            )}
-          </div>
 
         </div>
       </div>
