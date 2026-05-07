@@ -1591,7 +1591,7 @@ function MeinContentTab({ week, year }) {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
               </button>
             </div>
-            {subTab !== 'top' && canCreate && (
+            {subTab !== 'top' && (
               <button onClick={() => { setShowNew(v => !v); setDetailPlan(null) }}
                 className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors">
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
@@ -1639,13 +1639,23 @@ function MeinContentTab({ week, year }) {
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </div>
-            <PlanForm
-              initial={subTab === 'ideen' ? EMPTY_IDEA : EMPTY_WEEK}
-              onSave={f => createMut.mutate(f)}
-              onCancel={() => setShowNew(false)}
-              isPending={createMut.isPending}
-              hideStatus={subTab === 'ideen'}
-            />
+            {subTab === 'woche' && !selectedAccountId && accounts.length > 0 ? (
+              <div className="text-center py-8">
+                <div className="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center mb-3 mx-auto">
+                  <svg className="w-6 h-6 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+                </div>
+                <p className="text-sm font-medium text-gray-700">Account auswählen</p>
+                <p className="text-xs text-gray-400 mt-1">Wähle links einen Account aus, um einen Plan anzulegen.</p>
+              </div>
+            ) : (
+              <PlanForm
+                initial={subTab === 'ideen' ? EMPTY_IDEA : EMPTY_WEEK}
+                onSave={f => createMut.mutate(f)}
+                onCancel={() => setShowNew(false)}
+                isPending={createMut.isPending}
+                hideStatus={subTab === 'ideen'}
+              />
+            )}
           </div>
         ) : detailPlan ? (
           <PlanDetailContent
