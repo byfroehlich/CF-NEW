@@ -144,12 +144,21 @@ CREATE TABLE jobs (
   source_message_id BIGINT,
   status            TEXT DEFAULT 'open' CHECK (status IN ('open','in_progress','delivered','confirmed','carried')),
   carried_over_from UUID REFERENCES jobs(id),
+  partner_type      TEXT DEFAULT 'solo' CHECK (partner_type IN ('solo', 'partner')),
+  location_tags     TEXT[] DEFAULT '{}',
   created_at        TIMESTAMPTZ DEFAULT now(),
   in_progress_at    TIMESTAMPTZ,
   delivered_at      TIMESTAMPTZ,
   confirmed_at      TIMESTAMPTZ,
   deleted_at        TIMESTAMPTZ
 );
+```
+
+**DB-Migration (Neon ausführen):**
+```sql
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS partner_type TEXT DEFAULT 'solo'
+  CHECK (partner_type IN ('solo', 'partner'));
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS location_tags TEXT[] DEFAULT '{}';
 ```
 
 ### Tabelle: `job_status_history`
@@ -256,7 +265,12 @@ ALTER TABLE content_plans
 -- Push-Dialog: week_number/year nullable (Top-Video aus Woche entfernen ohne zu löschen)
 ALTER TABLE content_plans ALTER COLUMN week_number DROP NOT NULL;
 ALTER TABLE content_plans ALTER COLUMN year DROP NOT NULL;
+
+-- Location Tags
+ALTER TABLE content_plans ADD COLUMN IF NOT EXISTS location_tags TEXT[] DEFAULT '{}';
 ```
+
+**Location Tags:** `['outdoor','indoor','auto','stadt']` — Multi-Select beim Anlegen/Bearbeiten, Multi-Select-Filter in Bottom Sheet (Desktop: linke Sidebar). Mehrfachauswahl wirkt als AND (alle gewählten Tags müssen vorhanden sein).
 
 ### Tabelle: `creator_accounts`
 
@@ -388,12 +402,14 @@ CREATE TABLE logs (
 
 | Method | Path | Rolle | Beschreibung |
 |---|---|---|---|
-| GET | `/` | admin (alle), agency (eigene), creator (eigene) | Jobs nach KW/Plattform |
+| GET | `/` | admin (alle), agency (eigene), creator (eigene) | Jobs nach KW/Plattform; Query-Params: week, year, platform, partner_type, location_tags |
 | POST | `/` | admin, agency | Neuen Job anlegen |
-| PATCH | `/:id/status` | admin, agency, bot | Status ändern |
+| PATCH | `/:id/status` | admin, agency, bot | Status ändern (status + note) |
+| PATCH | `/:id` | creator | Job-Metadaten bearbeiten (partner_type, location_tags) — Creator kann eigene Jobs taggen |
 | DELETE | `/:id` | admin | Soft delete |
 | GET | `/summary` | admin, agency, creator | Wochenstatistik (creator: nur eigene) |
 | GET | `/stats` | admin, agency, creator | Zeitraum-Statistik: Monat/Quartal/Halbjahr/Jahr + Plattform-Verteilung + Monatsverlauf |
+| GET | `/combined` | creator | Kombinierte Liste: eigene Jobs + content_plans einer KW; gibt `[{_type:'job',...},{_type:'plan',...}]` zurück |
 
 ### Content Plans (`/api/v1/content-plans`)
 
@@ -472,9 +488,18 @@ CREATE TABLE logs (
 - **Statistik** — Platzhalter (→ TODO)
 
 ### Creator-Dashboard
-- **Aufträge** — nur eigene Jobs, Filter: KW / Plattform
-- **Mein Content** — Sub-Tabs: 📅 Wochenplan / 💡 Ideen / ⭐ Top-Videos; Account-Selector (anlegen, benennen, löschen); Wochenplan filtert per Account; Ideen + Top cross-account (mit Account-Filter); Stern-Button = `is_top_video` toggle; Stern erbt `account_id` vom Plan; Filter: Plattform / Solo-Partner; Stat-Karten (Gesamt/Offen/Erledigt); Listenansicht + Vollansicht; Inline-Edit; Schieben → nächste KW mit Übertrag-Badge; Agentur-Sichtbarkeit-Toggle
-- **Statistik** — Toggle Aufträge/Eigener Content; Wochenübersicht KW; Zeitraum-Karten (Monat/Quartal/Halbjahr/Jahr); Plattform-Balken; Monatsverlauf
+- **Aufträge** — Sub-Tabs: `Aufträge` (nur Jobs) | `Kombiniert` (Jobs + content_plans der KW); Filter: Plattform / Solo-Partner / Location; Abhaken = Job auf `confirmed` / Plan auf `done`
+- **Mein Content** — Sub-Tabs: 📅 Wochenplan / 💡 Ideen / ⭐ Top-Videos; Account-Selector; Wochenplan filtert per Account; Stern = `is_top_video`; Filter: Plattform / Solo-Partner / Location; Stat-Karten; Listen- + Vollansicht; Inline-Edit; Schieben → nächste KW; Agentur-Sichtbarkeit-Toggle
+  - **Desktop (lg:)**: 3-Panel-Layout — linke Filter-Sidebar (Sub-Tabs, Account, Art, Status, Location, Account-Filter) | mittlere Plan-Liste | rechtes Detail-/Formular-Panel
+- **Statistik** — Toggle Aufträge/Eigener Content; Wochenübersicht KW; Zeitraum-Karten; Plattform-Balken; Monatsverlauf
+
+**Kombinierte Liste (Aufträge-Tab, Sub-Tab „Kombiniert"):**
+- Zeigt `jobs` (von Agentur vergeben) + `content_plans` (eigene, KW-gefiltert) nebeneinander
+- Unified List-Item: unterschieden durch `_type: 'job' | 'plan'` + farbige linke Randlinie (Job: orange, Plan: violet)
+- Jobs: Creator kann `partner_type` + `location_tags` inline setzen (Tap → Bottom Sheet / Desktop Inline)
+- Abhaken: Job → `PATCH /:id/status { status: 'confirmed' }` | Plan → `PATCH /:id { status: 'done' }`
+- Filter: Plattform / Solo-Partner / Location — gelten für beide Typen gleichzeitig
+- Stat-Karten: Gesamt / Offen (Jobs offen + Pläne nicht fertig) / Erledigt
 
 ---
 
@@ -682,6 +707,8 @@ Persistente Leiste am unteren Rand — dient zum schnellen Rollen-Wechsel währe
 *Platzhalter — funktional aber ohne Inhalt
 
 ### Nächste Prioritäten
+- [ ] **Kombinierte Liste** — `GET /api/v1/jobs/combined` + `PATCH /api/v1/jobs/:id` (Metadaten) + Creator-Aufträge-Tab mit Sub-Tab „Kombiniert"
+- [ ] **Job-Tagging** — `partner_type` + `location_tags` auf `jobs`-Tabelle; DB-Migration + API + UI
 - [ ] **Admin Statistik-Tab** — Agenturen-Übersicht, filterbar nach Agentur/Creator/KW
 - [ ] **Admin Nutzer-Tab** — User-Liste mit Rollen, Passwort-Reset via Admin
 - [ ] **Agentur Statistik-Tab** — Eigene Agentur-Zahlen
