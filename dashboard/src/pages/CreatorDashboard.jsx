@@ -1333,6 +1333,17 @@ function MeinContentTab({ week, year }) {
             )}
           </div>
 
+          {/* Neuer Plan / Neue Idee — Sidebar-Button (desktop) */}
+          {subTab !== 'top' && (
+            <button
+              onClick={() => { setShowNew(true); setDetailPlan(null) }}
+              disabled={subTab === 'woche' && !selectedAccountId && accounts.length > 0}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
+              {subTab === 'ideen' ? 'Neue Idee' : 'Neuer Plan'}
+            </button>
+          )}
+
           {/* Partner filter (vertical list) */}
           <div>
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Art</p>
