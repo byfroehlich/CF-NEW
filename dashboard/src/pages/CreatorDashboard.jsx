@@ -368,7 +368,7 @@ function AuftraegeTab({ week, year, onWeekChange }) {
 
   // ── Mobile layout ──────────────────────────────────────────
   if (!isDesktop) return (
-    <div className="space-y-5">
+    <div className="space-y-5 max-w-3xl mx-auto px-6 py-6">
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
         {[['jobs','Aufträge'],['combined','Kombiniert']].map(([val, lbl]) => (
           <button key={val} onClick={() => setSubTab(val)}
@@ -2631,16 +2631,14 @@ export default function CreatorDashboard() {
 
       {/* Content area */}
       <div className="lg:flex-1 lg:overflow-hidden">
-        {activeTab === 'Mein Content'
-          ? <MeinContentTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />
-          : (
-            <div className="max-w-3xl mx-auto px-6 py-6">
-              {activeTab === 'Aufträge'   && <AuftraegeTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
-              {activeTab === 'Profil'     && <ProfilTab />}
-              {activeTab === 'Statistik'  && <StatistikTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
-            </div>
-          )
-        }
+        {activeTab === 'Mein Content' && <MeinContentTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
+        {activeTab === 'Aufträge'     && <AuftraegeTab   week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
+        {(activeTab === 'Profil' || activeTab === 'Statistik') && (
+          <div className="max-w-3xl mx-auto px-6 py-6">
+            {activeTab === 'Profil'    && <ProfilTab />}
+            {activeTab === 'Statistik' && <StatistikTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
+          </div>
+        )}
       </div>
     </div>
   )
