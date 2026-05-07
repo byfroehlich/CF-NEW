@@ -178,10 +178,10 @@ router.post('/', requireAnyRole, validate(contentPlanSchema), async (req, res) =
       agencyId = c?.agency_id ?? null
     }
 
-    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung, account_id } = req.body
+    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung, account_id, location_tags } = req.body
     const [plan] = await sql`
-      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung, account_id)
-      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null}, ${requisiten || null}, ${kleidung || null}, ${account_id || null})
+      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, requisiten, kleidung, account_id, location_tags)
+      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null}, ${requisiten || null}, ${kleidung || null}, ${account_id || null}, ${location_tags || []})
       RETURNING *
     `
     res.status(201).json(plan)
@@ -222,7 +222,8 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
         requisiten        = COALESCE(${f.requisiten ?? null}, requisiten),
         kleidung          = COALESCE(${f.kleidung ?? null}, kleidung),
         account_id        = CASE WHEN ${'account_id' in f}::boolean THEN ${f.account_id ?? null} ELSE account_id END,
-        is_top_video      = COALESCE(${f.is_top_video ?? null}, is_top_video)
+        is_top_video      = COALESCE(${f.is_top_video ?? null}, is_top_video),
+        location_tags     = CASE WHEN ${'location_tags' in f}::boolean THEN ${f.location_tags ?? []} ELSE location_tags END
       WHERE id = ${id}
       RETURNING *
     `

@@ -36,6 +36,8 @@ const STATUS_LABELS = { open:'Offen', in_progress:'In Arbeit', delivered:'Gelief
 const STATUS_COLORS = { open:'bg-red-100 text-red-700', in_progress:'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', confirmed:'bg-blue-100 text-blue-700', carried:'bg-yellow-100 text-yellow-700' }
 const PLAN_STATUS = { idea:'Idee', planned:'Geplant', filming:'Am Filmen', done:'Fertig' }
 const PLAN_COLORS = { idea:'bg-gray-100 text-gray-600', planned:'bg-blue-100 text-blue-700', filming:'bg-orange-100 text-orange-700', done:'bg-green-100 text-green-700' }
+const LOCATION_TAGS   = ['outdoor','indoor','auto','stadt']
+const LOCATION_LABELS = { outdoor:'Outdoor', indoor:'Indoor', auto:'Auto', stadt:'Stadt' }
 
 // ── Gradient Header ─────────────────────────────────────────
 function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
@@ -216,6 +218,19 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
           </button>
         ))}
       </div>
+      {/* Location Tags */}
+      <div className="flex flex-wrap gap-1.5">
+        {LOCATION_TAGS.map(tag => {
+          const active = (f.location_tags || []).includes(tag)
+          return (
+            <button key={tag} type="button"
+              onClick={() => setF(x => ({ ...x, location_tags: active ? (x.location_tags||[]).filter(t=>t!==tag) : [...(x.location_tags||[]), tag] }))}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors ${active ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'}`}>
+              {LOCATION_LABELS[tag]}
+            </button>
+          )
+        })}
+      </div>
       <input
         value={f.title || ''} onChange={e => setF(x => ({ ...x, title: e.target.value }))}
         className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
@@ -293,7 +308,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
       {editId === p.id ? (
         <PlanForm
-          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '' }}
+          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [] }}
           onSave={f => updateMut.mutate({ id: p.id, ...f })}
           onCancel={() => setEditId(null)}
           isPending={updateMut.isPending}
@@ -349,6 +364,15 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
                   {p.requisiten && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Requisiten:</span> {p.requisiten}</span>}
                   {p.kleidung && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Kleidung:</span> {p.kleidung}</span>}
+                </div>
+              )}
+              {(p.location_tags || []).length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-1.5">
+                  {p.location_tags.map(tag => (
+                    <span key={tag} className="text-xs px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-600 font-medium border border-sky-100">
+                      {LOCATION_LABELS[tag]}
+                    </span>
+                  ))}
                 </div>
               )}
               {p.source_link && (
@@ -494,6 +518,11 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, account
       {p.pushed_to_week && <span className="text-xs text-orange-500 font-medium flex-shrink-0">→KW{p.pushed_to_week}</span>}
       {p.carried_over_from && !isTopTab && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
       {p.is_top_video && <span className="text-yellow-400 flex-shrink-0"><IcoStar s="w-3.5 h-3.5" f={true} /></span>}
+      {(p.location_tags || []).length > 0 && (
+        <span className="text-xs px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-500 font-medium flex-shrink-0 border border-sky-100">
+          {p.location_tags.map(t => LOCATION_LABELS[t]).join(' · ')}
+        </span>
+      )}
       {/* Chevron */}
       <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
     </div>
@@ -528,7 +557,7 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
         <div className="px-5 py-5 space-y-4">
           {editing ? (
             <PlanForm
-              initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '' }}
+              initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [] }}
               onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
               onCancel={() => setEditing(false)}
               isPending={updateMut.isPending}
@@ -550,6 +579,18 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
                   {p.kleidung && (
                     <div className="text-sm"><span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Kleidung</span>{p.kleidung}</div>
                   )}
+                </div>
+              )}
+              {(p.location_tags || []).length > 0 && (
+                <div>
+                  <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1.5">Location</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {p.location_tags.map(tag => (
+                      <span key={tag} className="text-xs px-2 py-0.5 rounded-lg bg-sky-50 text-sky-600 font-medium border border-sky-100">
+                        {LOCATION_LABELS[tag]}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               )}
               {p.source_link && (
@@ -716,6 +757,7 @@ function MeinContentTab({ week, year }) {
   const [renameValue, setRenameValue]              = useState('')
   const [showFilterSheet, setShowFilterSheet]      = useState(false)
   const [pushDialog, setPushDialog]                = useState(null)  // { plan } | null
+  const [locationFilter, setLocationFilter]        = useState([])    // multi-select: []|['outdoor',...]
 
   // Accounts laden
   const { data: accounts = [] } = useQuery({ queryKey: ['creator-accounts'], queryFn: getCreatorAccounts })
@@ -741,8 +783,8 @@ function MeinContentTab({ week, year }) {
 
   const canCreate = subTab !== 'woche' || selectedAccountId !== null || accounts.length === 0
 
-  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '' }
-  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '' }
+  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '', location_tags: [] }
+  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '', location_tags: [] }
 
   // Wochenplan: aktuelle KW, gefiltert nach selectedAccountId
   const { data: weekRaw = [], isLoading: weekLoading, isError: weekError, error: weekErr } = useQuery({
@@ -760,18 +802,19 @@ function MeinContentTab({ week, year }) {
     queryFn: () => getContentPlans({ ...(platform !== 'Alle' && { platform }) })
   })
 
-  const applyPartner = list => partnerFilter === 'Alle' ? list : list.filter(p => p.partner_type === partnerFilter.toLowerCase())
-  const applyStatus  = list => {
+  const applyPartner   = list => partnerFilter === 'Alle' ? list : list.filter(p => p.partner_type === partnerFilter.toLowerCase())
+  const applyStatus    = list => {
     if (statusFilter === 'geplant')   return list.filter(p => p.status !== 'done' && !p.pushed_to_week)
     if (statusFilter === 'fertig')    return list.filter(p => p.status === 'done')
     if (statusFilter === 'geschoben') return list.filter(p => !!p.pushed_to_week)
     return list
   }
-  const applyAccountFilter = list => accountFilter ? list.filter(p => p.account_id === accountFilter) : list
+  const applyAccountFilter  = list => accountFilter ? list.filter(p => p.account_id === accountFilter) : list
+  const applyLocationFilter = list => locationFilter.length === 0 ? list : list.filter(p => locationFilter.every(t => (p.location_tags || []).includes(t)))
 
-  const weekPlans = applyStatus(applyPartner(weekRaw.filter(p => p.status !== 'idea')))
-  const ideaPlans = applyAccountFilter(applyPartner(allRaw.filter(p => p.status === 'idea')))
-  const topPlans  = applyAccountFilter(applyPartner(allRaw.filter(p => p.is_top_video)))
+  const weekPlans = applyLocationFilter(applyStatus(applyPartner(weekRaw.filter(p => p.status !== 'idea'))))
+  const ideaPlans = applyLocationFilter(applyAccountFilter(applyPartner(allRaw.filter(p => p.status === 'idea'))))
+  const topPlans  = applyLocationFilter(applyAccountFilter(applyPartner(allRaw.filter(p => p.is_top_video))))
 
   const plans     = subTab === 'woche' ? weekPlans : subTab === 'ideen' ? ideaPlans : topPlans
   const isLoading = subTab === 'woche' ? weekLoading : allLoading
@@ -1003,6 +1046,7 @@ function MeinContentTab({ week, year }) {
         const activeFilterCount = (partnerFilter !== 'Alle' ? 1 : 0)
           + (subTab === 'woche' && statusFilter !== 'Alle' ? 1 : 0)
           + ((subTab === 'ideen' || subTab === 'top') && accountFilter ? 1 : 0)
+          + (locationFilter.length > 0 ? 1 : 0)
         return (
           <div className="flex items-center gap-2">
             {/* Platform Icons */}
@@ -1062,7 +1106,7 @@ function MeinContentTab({ week, year }) {
               <div className="flex items-center justify-between">
                 <p className="text-base font-bold text-gray-900">Filter</p>
                 <button
-                  onClick={() => { setPartnerFilter('Alle'); setStatusFilter('Alle'); setAccountFilter(null) }}
+                  onClick={() => { setPartnerFilter('Alle'); setStatusFilter('Alle'); setAccountFilter(null); setLocationFilter([]) }}
                   className="text-xs text-red-400 hover:text-red-600 font-medium">
                   Zurücksetzen
                 </button>
@@ -1118,6 +1162,26 @@ function MeinContentTab({ week, year }) {
                   </div>
                 </div>
               )}
+
+              {/* Location Tags — Multi-Select */}
+              <div>
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Location</p>
+                <div className="flex flex-wrap gap-2">
+                  {LOCATION_TAGS.map(tag => {
+                    const active = locationFilter.includes(tag)
+                    return (
+                      <button key={tag}
+                        onClick={() => setLocationFilter(prev => active ? prev.filter(t => t !== tag) : [...prev, tag])}
+                        className={`px-4 py-2.5 rounded-xl text-sm font-medium border transition-colors ${active ? 'bg-sky-500 text-white border-sky-500' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                        {LOCATION_LABELS[tag]}
+                      </button>
+                    )
+                  })}
+                </div>
+                {locationFilter.length > 1 && (
+                  <p className="text-xs text-gray-400 mt-1.5">Mehrfachauswahl: zeigt Videos mit allen gewählten Tags</p>
+                )}
+              </div>
 
               {/* Fertig-Button */}
               <button onClick={() => setShowFilterSheet(false)}

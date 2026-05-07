@@ -112,6 +112,7 @@ export const contentPlanSchema = z.object({
   requisiten: z.string().optional().nullable(),
   kleidung: z.string().optional().nullable(),
   account_id: z.string().uuid().optional().nullable(),
+  location_tags: z.array(z.enum(['outdoor','indoor','auto','stadt'])).optional().default([]),
 })
 
 export const contentPlanUpdateSchema = z.object({
@@ -130,4 +131,5 @@ export const contentPlanUpdateSchema = z.object({
   kleidung: z.string().optional().nullable(),
   account_id: z.string().uuid().optional().nullable(),
   is_top_video: z.boolean().optional(),
+  location_tags: z.array(z.enum(['outdoor','indoor','auto','stadt'])).optional(),
 })
