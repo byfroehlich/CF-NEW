@@ -43,6 +43,41 @@ function getCurrentWeek() {
   return { week: Math.ceil((((d - yearStart) / 86400000) + 1) / 7), year: d.getUTCFullYear() }
 }
 
+// ── Prominent week selector bar (desktop center panel) ───────
+function WeekStrip({ week, year, onChange }) {
+  function prev() { onChange(week === 1 ? 52 : week - 1, week === 1 ? year - 1 : year) }
+  function next() { onChange(week === 52 ? 1 : week + 1, week === 52 ? year + 1 : year) }
+
+  // Calculate Mon–Sun date range for the given ISO week
+  function weekRange(w, y) {
+    const jan4 = new Date(Date.UTC(y, 0, 4))
+    const dayOfWeek = jan4.getUTCDay() || 7
+    const monday = new Date(jan4)
+    monday.setUTCDate(jan4.getUTCDate() - (dayOfWeek - 1) + (w - 1) * 7)
+    const sunday = new Date(monday)
+    sunday.setUTCDate(monday.getUTCDate() + 6)
+    const fmt = d => d.toLocaleDateString('de-DE', { day: 'numeric', month: 'short', timeZone: 'UTC' })
+    return `${fmt(monday)} – ${fmt(sunday)}`
+  }
+
+  return (
+    <div className="flex items-center bg-indigo-50 border-b border-indigo-100 px-5 py-3 flex-shrink-0">
+      <button onClick={prev}
+        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-indigo-100 text-indigo-500 hover:text-indigo-700 transition-colors text-lg font-light">
+        ‹
+      </button>
+      <div className="flex-1 text-center">
+        <div className="text-base font-bold text-indigo-900 leading-tight">KW {week} / {year}</div>
+        <div className="text-xs text-indigo-400 mt-0.5">{weekRange(week, year)}</div>
+      </div>
+      <button onClick={next}
+        className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-indigo-100 text-indigo-500 hover:text-indigo-700 transition-colors text-lg font-light">
+        ›
+      </button>
+    </div>
+  )
+}
+
 const STATUS_LABELS = { open:'Offen', in_progress:'In Arbeit', delivered:'Geliefert', confirmed:'Bestätigt', carried:'Übertrag' }
 const STATUS_COLORS = { open:'bg-red-100 text-red-700', in_progress:'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', confirmed:'bg-blue-100 text-blue-700', carried:'bg-yellow-100 text-yellow-700' }
 const PLAN_STATUS = { idea:'Idee', planned:'Geplant', filming:'Am Filmen', done:'Fertig' }
@@ -463,11 +498,10 @@ function AuftraegeTab({ week, year, onWeekChange }) {
 
       {/* CENTER PANEL */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Week strip */}
+        <WeekStrip week={week} year={year} onChange={onWeekChange} />
         {/* Toolbar */}
         <div className="px-5 pt-4 pb-3 border-b border-gray-100 bg-white space-y-3 flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <WeekNav light week={week} year={year} onChange={onWeekChange} />
-          </div>
           <div className="grid grid-cols-3 gap-3">
             <StatCard label="Gesamt"   value={gesamt}   color="gray" />
             <StatCard label="Offen"    value={offen}    color="red" />
@@ -1597,8 +1631,12 @@ function MeinContentTab({ week, year, onWeekChange }) {
       </aside>
 
       {/* ─── CENTER CONTENT ─── */}
-      <div className="lg:flex-1 lg:min-w-0 lg:overflow-y-auto">
-        <div className="space-y-4 lg:p-6">
+      <div className="lg:flex-1 lg:min-w-0 lg:flex lg:flex-col lg:overflow-hidden">
+        {/* Week strip — desktop only, sticky at top */}
+        <div className="hidden lg:block flex-shrink-0">
+          <WeekStrip week={week} year={year} onChange={onWeekChange} />
+        </div>
+        <div className="space-y-4 lg:p-6 lg:overflow-y-auto lg:flex-1">
 
           {/* Stat cards */}
           <div className="grid grid-cols-3 gap-3">
@@ -1760,11 +1798,6 @@ function MeinContentTab({ week, year, onWeekChange }) {
             </div>
           </div>
           {/* END MOBILE ONLY */}
-
-          {/* DESKTOP ONLY: KW nav */}
-          <div className="hidden lg:flex items-center justify-between pb-3 border-b border-gray-100">
-            <WeekNav light week={week} year={year} onChange={onWeekChange} />
-          </div>
 
           {/* DESKTOP ONLY: platform filter row + view toggle */}
           <div className="hidden lg:flex items-center gap-3 pb-4 border-b border-gray-100">
@@ -2152,9 +2185,9 @@ function StatistikTab({ week, year, onWeekChange }) {
   return (
     <div className="space-y-6">
 
-      {/* KW nav — desktop only (mobile uses header) */}
-      <div className="hidden lg:flex items-center justify-between pb-2 border-b border-gray-100">
-        <WeekNav light week={week} year={year} onChange={onWeekChange} />
+      {/* KW nav — desktop only, break out of padding to go full-width */}
+      <div className="hidden lg:block -mx-6 -mt-6 mb-2">
+        <WeekStrip week={week} year={year} onChange={onWeekChange} />
       </div>
 
       {/* ── Datentyp-Toggle — ganz oben ─────────────────── */}
