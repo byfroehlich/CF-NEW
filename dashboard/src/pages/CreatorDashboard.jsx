@@ -2139,6 +2139,7 @@ function KalenderTab({ week, year, onWeekChange }) {
   const [dropState, setDropState] = useState(null) // { plan, dateStr }
   const [dropTime, setDropTime] = useState('')
   const [dragOverDay, setDragOverDay] = useState(null)
+  const [dragOverUnplanned, setDragOverUnplanned] = useState(false)
   const isDesktop = useIsDesktop()
 
   // All plans for the year — grouped by post_date
@@ -2182,10 +2183,10 @@ function KalenderTab({ week, year, onWeekChange }) {
       .sort((a, b) => (a.post_time || '').localeCompare(b.post_time || ''))
   }))
 
-  // Plans in this editorial week WITHOUT a post_date (show separately)
-  const noDatePlans = allPlans.filter(p =>
-    p.week_number === week && p.year === year && !p.post_date && p.status !== 'idea'
-  )
+  // ALL plans without a post_date (any week) — shown as drag pool
+  const noDatePlans = allPlans
+    .filter(p => !p.post_date && p.status !== 'idea')
+    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.week_number - b.week_number)
 
   const totalWithDate = byDay.reduce((s, d) => s + d.plans.length, 0)
   const syncedDetail  = detailPlan ? allPlans.find(p => p.id === detailPlan.id) || detailPlan : null
@@ -2358,14 +2359,43 @@ function KalenderTab({ week, year, onWeekChange }) {
                 })}
               </div>
 
-              {/* Plans without post_date in this editorial week */}
-              {noDatePlans.length > 0 && (
-                <div className="mt-4 bg-white rounded-xl border border-gray-200 p-3">
-                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
-                    Nicht eingeplant · KW{week}
-                    <span className="ml-1 bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{noDatePlans.length}</span>
+              {/* Nicht eingeplant — drop zone + drag pool (all weeks) */}
+              <div
+                className={`mt-4 rounded-xl border-2 p-3 transition-all ${
+                  dragOverUnplanned
+                    ? 'border-orange-400 bg-orange-50/60 shadow-sm'
+                    : 'border-dashed border-gray-200 bg-white'
+                }`}
+                onDragOver={e => { e.preventDefault(); setDragOverUnplanned(true) }}
+                onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverUnplanned(false) }}
+                onDrop={e => {
+                  e.preventDefault()
+                  setDragOverUnplanned(false)
+                  const plan = JSON.parse(e.dataTransfer.getData('application/json'))
+                  if (!plan.post_date) return
+                  updateMut.mutate({ id: plan.id, post_date: null, post_time: null })
+                }}>
+                <p className="text-[11px] font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                  {dragOverUnplanned ? (
+                    <span className="text-orange-500 flex items-center gap-1.5">
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                      Hier ablegen → Termin entfernen
+                    </span>
+                  ) : (
+                    <span className="text-gray-400 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
+                      Nicht eingeplant
+                      {noDatePlans.length > 0 && (
+                        <span className="bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{noDatePlans.length}</span>
+                      )}
+                    </span>
+                  )}
+                </p>
+                {noDatePlans.length === 0 ? (
+                  <p className="text-xs text-gray-300 italic py-2 text-center">
+                    {dragOverUnplanned ? '' : 'Alle Pläne haben einen Posting-Termin · Karte hierhin ziehen zum Entterminieren'}
                   </p>
+                ) : (
                   <div className="flex flex-wrap gap-2">
                     {noDatePlans.map(p => (
                       <button key={p.id}
@@ -2380,13 +2410,13 @@ function KalenderTab({ week, year, onWeekChange }) {
                         }`}>
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(p.status)}`} />
                         <PlatformIcon platform={p.platform} size="badge" />
-                        <span className="text-xs text-gray-700 max-w-[120px] truncate">{p.title || '(kein Titel)'}</span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${PLAN_COLORS[p.status]}`}>{PLAN_STATUS[p.status]}</span>
+                        <span className="text-xs text-gray-700 max-w-[100px] truncate">{p.title || '(kein Titel)'}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium">KW{p.week_number}</span>
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
               {totalWithDate === 0 && noDatePlans.length === 0 && (
                 <div className="text-center py-16">
