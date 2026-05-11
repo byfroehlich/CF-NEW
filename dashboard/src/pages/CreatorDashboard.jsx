@@ -2132,6 +2132,7 @@ function KalenderTab({ week, year, onWeekChange }) {
   const [detailPlan, setDetailPlan] = useState(null)
   const [dropState, setDropState] = useState(null) // { plan, dateStr }
   const [dropTime, setDropTime] = useState('')
+  const [dragOverDay, setDragOverDay] = useState(null)
   const isDesktop = useIsDesktop()
 
   // All plans for the year — grouped by post_date
@@ -2191,8 +2192,15 @@ function KalenderTab({ week, year, onWeekChange }) {
     const overdue = p.post_date && p.status !== 'done' && p.post_date.slice(0,10) < today
     const isSelected = detailPlan?.id === p.id
     return (
-      <button onClick={() => setDetailPlan(isSelected ? null : p)}
-        className={`w-full text-left px-2 py-1.5 rounded-lg border transition-colors ${
+      <button
+        draggable
+        onDragStart={e => {
+          e.dataTransfer.setData('application/json', JSON.stringify(p))
+          e.dataTransfer.effectAllowed = 'move'
+          e.stopPropagation()
+        }}
+        onClick={() => setDetailPlan(isSelected ? null : p)}
+        className={`w-full text-left px-2 py-1.5 rounded-lg border transition-colors cursor-grab active:cursor-grabbing ${
           isSelected     ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-200' :
           p.posted_at    ? 'bg-green-50 border-green-200' :
           p.status === 'done' ? 'bg-green-50 border-green-200 opacity-70' :
@@ -2295,30 +2303,49 @@ function KalenderTab({ week, year, onWeekChange }) {
           ) : (
             <>
               {/* 7-column day grid */}
-              <div className="grid grid-cols-7 gap-2" style={{ minHeight: '200px' }}>
+              <div className="grid grid-cols-7 gap-2">
                 {byDay.map(({ dateStr, plans }, i) => {
-                  const isToday = dateStr === today
-                  const dayNum  = days[i].getUTCDate()
-                  const month   = days[i].toLocaleDateString('de-DE', { month: 'short', timeZone: 'UTC' })
+                  const isToday    = dateStr === today
+                  const isWeekend  = i >= 5
+                  const isOver     = dragOverDay === dateStr
+                  const dayNum     = days[i].getUTCDate()
+                  const month      = days[i].toLocaleDateString('de-DE', { month: 'short', timeZone: 'UTC' })
                   return (
-                    <div key={dateStr} className="flex flex-col min-w-0"
-                      onDragOver={e => e.preventDefault()}
+                    <div key={dateStr}
+                      className={`flex flex-col rounded-xl overflow-hidden border transition-all ${
+                        isOver    ? 'border-indigo-400 ring-2 ring-indigo-200 shadow-sm' :
+                        isToday   ? 'border-indigo-300 shadow-sm' :
+                        isWeekend ? 'border-gray-200 bg-gray-50/60' :
+                        'border-gray-200 bg-white'
+                      }`}
+                      onDragOver={e => { e.preventDefault(); setDragOverDay(dateStr) }}
+                      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverDay(null) }}
                       onDrop={e => {
                         e.preventDefault()
+                        setDragOverDay(null)
                         const plan = JSON.parse(e.dataTransfer.getData('application/json'))
-                        setDropTime('')
+                        if (String(plan.post_date || '').slice(0,10) === dateStr) return
+                        setDropTime(plan.post_time ? plan.post_time.slice(0,5) : '')
                         setDropState({ plan, dateStr })
                       }}>
                       {/* Day header */}
-                      <div className={`text-center mb-2 py-1.5 rounded-xl ${isToday ? 'bg-indigo-600 text-white' : 'bg-gray-50 text-gray-500'}`}>
-                        <div className="text-[10px] font-semibold uppercase tracking-wide">{DAY_NAMES[i]}</div>
-                        <div className={`text-base font-bold leading-tight ${isToday ? 'text-white' : 'text-gray-800'}`}>{dayNum}</div>
-                        <div className="text-[10px] opacity-60">{month}</div>
+                      <div className={`text-center px-1 py-2.5 border-b ${
+                        isToday   ? 'bg-indigo-600 border-indigo-500' :
+                        isWeekend ? 'bg-gray-100/80 border-gray-200' :
+                        'bg-gray-50 border-gray-100'
+                      }`}>
+                        <div className={`text-[10px] font-semibold uppercase tracking-widest ${isToday ? 'text-indigo-200' : 'text-gray-400'}`}>{DAY_NAMES[i]}</div>
+                        <div className={`text-xl font-bold leading-tight mt-0.5 ${isToday ? 'text-white' : isWeekend ? 'text-gray-500' : 'text-gray-800'}`}>{dayNum}</div>
+                        <div className={`text-[10px] mt-0.5 ${isToday ? 'text-indigo-300' : 'text-gray-300'}`}>{month}</div>
                       </div>
-                      {/* Plan cards for this day */}
-                      <div className="flex-1 space-y-1.5 min-h-[40px]">
+                      {/* Cards area */}
+                      <div className={`flex-1 p-1.5 space-y-1.5 min-h-[120px] transition-colors ${isOver ? 'bg-indigo-50/40' : ''}`}>
                         {plans.map(p => <CalPlanCard key={p.id} p={p} />)}
-                        {plans.length === 0 && <div className="min-h-[40px] rounded-lg border border-dashed border-gray-100" />}
+                        {isOver && (
+                          <div className="min-h-[36px] rounded-lg border-2 border-dashed border-indigo-300 flex items-center justify-center">
+                            <span className="text-[10px] text-indigo-400 font-medium">Hier ablegen</span>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
@@ -2327,9 +2354,11 @@ function KalenderTab({ week, year, onWeekChange }) {
 
               {/* Plans without post_date in this editorial week */}
               {noDatePlans.length > 0 && (
-                <div className="mt-6">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                    KW{week} — kein Posting-Termin gesetzt ({noDatePlans.length})
+                <div className="mt-4 bg-white rounded-xl border border-gray-200 p-3">
+                  <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2.5 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-gray-300 inline-block" />
+                    Nicht eingeplant · KW{week}
+                    <span className="ml-1 bg-gray-100 text-gray-500 text-[10px] font-bold px-1.5 py-0.5 rounded-full">{noDatePlans.length}</span>
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {noDatePlans.map(p => (
@@ -2341,7 +2370,7 @@ function KalenderTab({ week, year, onWeekChange }) {
                         }}
                         onClick={() => setDetailPlan(detailPlan?.id === p.id ? null : p)}
                         className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors cursor-grab active:cursor-grabbing ${
-                          detailPlan?.id === p.id ? 'border-indigo-400 bg-indigo-50' : 'bg-white border-gray-200 hover:border-indigo-200'
+                          detailPlan?.id === p.id ? 'border-indigo-400 bg-indigo-50' : 'bg-gray-50 border-gray-200 hover:border-indigo-200 hover:bg-white'
                         }`}>
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(p.status)}`} />
                         <PlatformIcon platform={p.platform} size="badge" />
