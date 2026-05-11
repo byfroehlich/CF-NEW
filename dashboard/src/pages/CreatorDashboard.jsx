@@ -749,6 +749,55 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
   )
 }
 
+// ── Plan-Milestones (Geplant / Gedreht / Geschnitten / Gepostet) ─
+function PlanMilestones({ p, updateMut, busy, layout = 'row' }) {
+  function toggle(e, key) {
+    e.stopPropagation()
+    const updates = {
+      geplant:     p.status !== 'idea'
+        ? { status: 'idea' }
+        : { status: 'planned' },
+      gedreht:     (['filming','geschnitten','done'].includes(p.status) || p.posted_at)
+        ? { status: 'planned' }
+        : { status: 'filming' },
+      geschnitten: (['geschnitten','done'].includes(p.status) || p.posted_at)
+        ? { status: 'filming' }
+        : { status: 'geschnitten' },
+      gepostet:    p.posted_at
+        ? { posted_at: null }
+        : { posted_at: new Date().toISOString(), status: 'done' },
+    }
+    updateMut.mutate({ id: p.id, ...updates[key] })
+  }
+
+  const steps = [
+    { key: 'geplant',     label: 'Geplant',     done: p.status !== 'idea' },
+    { key: 'gedreht',     label: 'Gedreht',     done: ['filming','geschnitten','done'].includes(p.status) || !!p.posted_at },
+    { key: 'geschnitten', label: 'Geschnitten', done: ['geschnitten','done'].includes(p.status) || !!p.posted_at },
+    { key: 'gepostet',    label: 'Gepostet',    done: !!p.posted_at },
+  ]
+
+  return (
+    <div className={layout === 'column' ? 'space-y-2' : 'flex items-center gap-3 flex-wrap'}>
+      {steps.map(m => (
+        <button key={m.key}
+          onClick={e => toggle(e, m.key)}
+          disabled={busy}
+          className={`flex items-center gap-1.5 transition-colors disabled:opacity-40 ${
+            layout === 'column' ? 'text-sm w-full' : 'text-[11px] font-medium'
+          } ${m.done ? 'text-green-600' : 'text-gray-400 hover:text-gray-600'}`}>
+          <span className={`flex-shrink-0 rounded border-2 flex items-center justify-center transition-colors ${
+            layout === 'column' ? 'w-4 h-4' : 'w-3 h-3'
+          } ${m.done ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400'}`}>
+            {m.done && <svg className={layout === 'column' ? 'w-2.5 h-2.5' : 'w-2 h-2'} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>}
+          </span>
+          <span className={m.done && layout === 'column' ? 'line-through text-gray-400' : ''}>{m.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ── Plan-Karte (wiederverwendet in Wochenplan + Ideen) ───────
 function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, showWeekBadge, isIdeaTab, isTopTab, accounts, onPushRequest }) {
   const nxt = nextWeekOf(week, year)
@@ -757,14 +806,10 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
   const busy = busyId === p.id
   const accountName = accounts?.find(a => a.id === p.account_id)?.name
 
-  function cycleStatus() {
-    const next = STATUS_CYCLE_WEEK[(STATUS_CYCLE_WEEK.indexOf(p.status) + 1) % STATUS_CYCLE_WEEK.length]
-    updateMut.mutate({ id: p.id, status: next })
-  }
-
   return (
     <div className={`bg-white rounded-2xl border p-4 transition-all ${
-      p.status === 'done' ? 'border-green-300 bg-green-100' :
+      p.posted_at ? 'border-green-300 bg-green-50' :
+      p.status === 'done' ? 'border-green-200 bg-green-50' :
       p.post_date && p.status !== 'done' && p.post_date < new Date().toISOString().split('T')[0] ? 'border-red-200 bg-red-50' :
       p.pushed_to_week ? 'border-orange-300 bg-orange-100 opacity-75' :
       'border-gray-200'
@@ -784,127 +829,88 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
         />
       ) : (
         <>
-          {/* ── Main row ───────────────────────────────── */}
-          <div className="flex items-start gap-3">
-
-            {/* Big round done-toggle */}
-            <button
-              onClick={() => !isIdeaTab && updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })}
-              disabled={isIdeaTab || busy}
-              className={`flex-shrink-0 w-8 h-8 rounded-full border-2 flex items-center justify-center transition-all mt-0.5 active:scale-95
-                ${p.status === 'done'
-                  ? 'bg-green-500 border-green-500 shadow-sm shadow-green-200'
-                  : 'border-gray-300 hover:border-green-400 bg-white'}
-                disabled:opacity-40`}
-            >
-              {p.status === 'done' && (
-                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              )}
-            </button>
-
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <PlatformIcon platform={p.platform} size="badge" />
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
-                  {p.partner_type === 'partner' ? <><IcoUsers /> Partner</> : <><IcoUser /> Solo</>}
-                </span>
-                {accountName && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium">{accountName}</span>
-                )}
-                {showWeekBadge && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-400 font-medium">KW{p.week_number}</span>
-                )}
-                {p.carried_over_from && !isTopTab && (
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">↩ Übertrag</span>
-                )}
-              </div>
-              {p.title && (
-                <p className={`text-sm font-semibold mt-1 ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-900'}`}>
-                  {p.title}
-                </p>
-              )}
-              {p.description && (
-                <p className="text-xs text-gray-500 mt-0.5 whitespace-pre-wrap">{p.description}</p>
-              )}
-              {(p.requisiten || p.kleidung) && (
-                <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                  {p.requisiten && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Requisiten:</span> {p.requisiten}</span>}
-                  {p.kleidung && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Kleidung:</span> {p.kleidung}</span>}
-                </div>
-              )}
-              {(p.location_tags || []).length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {p.location_tags.map(tag => (
-                    <span key={tag} className="text-xs px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-600 font-medium border border-sky-100">
-                      {LOCATION_LABELS[tag]}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {p.post_date && (() => {
-                const overdue = p.status !== 'done' && p.post_date < new Date().toISOString().split('T')[0]
-                return (
-                  <div className={`flex items-center gap-1.5 mt-1.5 text-xs font-medium ${overdue ? 'text-red-500' : 'text-indigo-500'}`}>
-                    {overdue ? '⚠' : '📅'}
-                    <span>
-                      {overdue ? 'Termin überschritten: ' : 'Posting: '}
-                      {new Date(p.post_date + 'T00:00:00Z').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}
-                      {p.post_time && ` · ${p.post_time.slice(0,5)} Uhr`}
-                    </span>
-                    {p.posted_at && <span className="ml-1 text-green-500 font-semibold">✓ gepostet</span>}
-                  </div>
-                )
-              })()}
-              {p.source_link && (
-                <button onClick={() => setShowPreview(true)}
-                  className="inline-flex items-center gap-1 mt-1.5 text-xs text-violet-600 hover:text-violet-800 font-medium">
-                  <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                  </svg>
-                  Beispielvideo ansehen
-                </button>
-              )}
-              {showPreview && <VideoModal url={p.source_link} onClose={() => setShowPreview(false)} />}
+          {/* ── Header badges + push button ───────────── */}
+          <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <PlatformIcon platform={p.platform} size="badge" />
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${p.partner_type === 'partner' ? 'bg-violet-100 text-violet-700' : 'bg-gray-100 text-gray-500'}`}>
+                {p.partner_type === 'partner' ? <><IcoUsers /> Partner</> : <><IcoUser /> Solo</>}
+              </span>
+              {accountName && <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium">{accountName}</span>}
+              {showWeekBadge && <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-400 font-medium">KW{p.week_number}</span>}
+              {p.carried_over_from && !isTopTab && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">↩ Übertrag</span>}
             </div>
-
-            {/* Right: status + push outlined pill */}
-            <div className="flex-shrink-0 flex flex-col items-end gap-2">
-              {/* Status badge (cycles on tap) */}
-              {!isIdeaTab && (
-                <button onClick={cycleStatus} disabled={busy}
-                  className={`text-xs px-2.5 py-1 rounded-full font-medium hover:opacity-80 disabled:opacity-50 transition-opacity ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-600'}`}>
-                  {updateMut.isPending && updateMut.variables?.id === p.id ? '…' : PLAN_STATUS[p.status] || p.status}
-                </button>
-              )}
-
-              {/* Push / Einplanen / Rückgängig — outlined pill */}
-              {isIdeaTab || isTopTab ? (
-                <button
-                  onClick={() => onPushRequest && onPushRequest(p)}
-                  disabled={busy}
-                  className="text-xs font-semibold px-2.5 py-1 rounded-full border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-40 transition-colors whitespace-nowrap">
-                  {`→ KW${week}`}
-                </button>
-              ) : p.pushed_to_week ? (
-                <button onClick={() => undoPushMut.mutate({ id: p.id, allPlans })} disabled={undoPushMut?.isPending || busy}
-                  className="text-xs font-medium px-2.5 py-1 rounded-full border border-orange-400 text-orange-600 hover:bg-orange-50 disabled:opacity-40 transition-colors whitespace-nowrap">
-                  {undoPushMut?.isPending && undoPushMut.variables?.id === p.id ? '…' : '↩ Rückgängig'}
-                </button>
-              ) : (
-                <button onClick={() => pushMut.mutate(p)} disabled={pushMut.isPending || busy}
-                  className="text-xs font-medium px-2.5 py-1 rounded-full border border-indigo-400 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 transition-colors whitespace-nowrap">
-                  {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
-                </button>
-              )}
-            </div>
+            {/* Push / Einplanen / Rückgängig */}
+            {isIdeaTab || isTopTab ? (
+              <button onClick={() => onPushRequest && onPushRequest(p)} disabled={busy}
+                className="text-xs font-semibold px-2.5 py-1 rounded-full border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-40 transition-colors whitespace-nowrap flex-shrink-0">
+                → KW{week}
+              </button>
+            ) : p.pushed_to_week ? (
+              <button onClick={() => undoPushMut.mutate({ id: p.id, allPlans })} disabled={undoPushMut?.isPending || busy}
+                className="text-xs font-medium px-2.5 py-1 rounded-full border border-orange-400 text-orange-600 hover:bg-orange-50 disabled:opacity-40 transition-colors whitespace-nowrap flex-shrink-0">
+                {undoPushMut?.isPending && undoPushMut.variables?.id === p.id ? '…' : '↩ Rückgängig'}
+              </button>
+            ) : (
+              <button onClick={() => pushMut.mutate(p)} disabled={pushMut.isPending || busy}
+                className="text-xs font-medium px-2.5 py-1 rounded-full border border-indigo-400 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 transition-colors whitespace-nowrap flex-shrink-0">
+                {pushMut.isPending && pushMut.variables?.id === p.id ? '…' : `→ KW${nxt.week}`}
+              </button>
+            )}
           </div>
 
+          {/* ── Title / Description / Meta ─────────────── */}
+          {p.title && (
+            <p className={`text-sm font-semibold mb-1 ${p.posted_at ? 'line-through text-gray-400' : 'text-gray-900'}`}>{p.title}</p>
+          )}
+          {p.description && <p className="text-xs text-gray-500 mb-1.5 whitespace-pre-wrap">{p.description}</p>}
+          {(p.requisiten || p.kleidung) && (
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-1.5">
+              {p.requisiten && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Requisiten:</span> {p.requisiten}</span>}
+              {p.kleidung && <span className="text-xs text-gray-400"><span className="font-medium text-gray-500">Kleidung:</span> {p.kleidung}</span>}
+            </div>
+          )}
+          {(p.location_tags || []).length > 0 && (
+            <div className="flex flex-wrap gap-1 mb-1.5">
+              {p.location_tags.map(tag => (
+                <span key={tag} className="text-xs px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-600 font-medium border border-sky-100">{LOCATION_LABELS[tag]}</span>
+              ))}
+            </div>
+          )}
+          {p.post_date && (() => {
+            const overdue = !p.posted_at && p.post_date.slice(0,10) < new Date().toISOString().split('T')[0]
+            return (
+              <div className={`flex items-center gap-1.5 mb-1.5 text-xs font-medium ${overdue ? 'text-red-500' : p.posted_at ? 'text-green-600' : 'text-indigo-500'}`}>
+                {overdue ? '⚠' : p.posted_at ? '✓' : '📅'}
+                <span>
+                  {overdue ? 'Termin überschritten: ' : p.posted_at ? 'Gepostet am: ' : 'Posting: '}
+                  {new Date(p.post_date + 'T00:00:00Z').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                  {p.post_time && ` · ${p.post_time.slice(0,5)} Uhr`}
+                </span>
+              </div>
+            )
+          })()}
+          {p.source_link && (
+            <button onClick={() => setShowPreview(true)}
+              className="inline-flex items-center gap-1 mb-1.5 text-xs text-violet-600 hover:text-violet-800 font-medium">
+              <svg className="w-3 h-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+              Beispielvideo ansehen
+            </button>
+          )}
+          {showPreview && <VideoModal url={p.source_link} onClose={() => setShowPreview(false)} />}
+
+          {/* ── Milestones ──────────────────────────────── */}
+          {!isIdeaTab && (
+            <div className="mt-2 pt-2.5 border-t border-gray-100">
+              <PlanMilestones p={p} updateMut={updateMut} busy={busy} layout="row" />
+            </div>
+          )}
+
           {/* ── Footer: agency toggle + edit + delete ─── */}
-          <div className="mt-3 pt-2.5 border-t border-gray-100 pl-11 flex items-center justify-between">
+          <div className="mt-2.5 pt-2.5 border-t border-gray-100 flex items-center justify-between">
             <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer select-none">
               <input
                 type="checkbox"
@@ -967,59 +973,46 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
 // ── Plan List Row (kompakte Listenansicht) ───────────────────
 function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, accounts }) {
-  const postOverdue = p.post_date && p.status !== 'done' && new Date(p.post_date) < new Date()
-  const nextStatus = STATUS_CYCLE_WEEK[(STATUS_CYCLE_WEEK.indexOf(p.status) + 1) % STATUS_CYCLE_WEEK.length]
+  const today = new Date().toISOString().split('T')[0]
+  const postOverdue = p.post_date && !p.posted_at && p.post_date.slice(0,10) < today
   return (
     <div onClick={onClick}
-      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors select-none ${
-        p.status === 'done'    ? 'bg-green-50 border border-green-200' :
-        postOverdue            ? 'bg-red-50 border border-red-200' :
-        p.pushed_to_week       ? 'bg-orange-50 border border-orange-200 opacity-75' :
-        'bg-white border border-gray-200 active:bg-gray-50'
+      className={`px-3 py-2.5 rounded-xl cursor-pointer transition-colors select-none border ${
+        p.posted_at            ? 'bg-green-50 border-green-200' :
+        postOverdue            ? 'bg-red-50 border-red-200' :
+        p.pushed_to_week       ? 'bg-orange-50 border-orange-200 opacity-75' :
+        'bg-white border-gray-200 active:bg-gray-50'
       }`}>
-      {/* Status-Toggle */}
-      {!isIdeaTab && (
-        <button onClick={e => { e.stopPropagation(); updateMut.mutate({ id: p.id, status: nextStatus }) }}
+      {/* Row 1: icons + title + badges + star + chevron */}
+      <div className="flex items-center gap-2">
+        <PlatformIcon platform={p.platform} size="badge" />
+        <span className="text-gray-400 flex-shrink-0">{p.partner_type === 'partner' ? <IcoUsers /> : <IcoUser />}</span>
+        {accounts?.find(a => a.id === p.account_id) && (
+          <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium flex-shrink-0 max-w-[80px] truncate">
+            {accounts.find(a => a.id === p.account_id).name}
+          </span>
+        )}
+        <span className={`flex-1 text-sm truncate ${p.posted_at ? 'line-through text-gray-400' : 'text-gray-800'}`}>
+          {p.title || p.description || <span className="text-gray-300 italic text-xs">Kein Titel</span>}
+        </span>
+        {postOverdue && <span className="text-red-400 flex-shrink-0 text-xs">⚠</span>}
+        {p.post_date && !postOverdue && !p.posted_at && <span className="text-xs text-indigo-400 flex-shrink-0">📅</span>}
+        {p.post_date && p.posted_at && <span className="text-xs text-green-500 flex-shrink-0 font-semibold">✓</span>}
+        {p.pushed_to_week && <span className="text-xs text-orange-500 font-medium flex-shrink-0">→KW{p.pushed_to_week}</span>}
+        {p.carried_over_from && !isTopTab && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
+        <button onClick={e => { e.stopPropagation(); updateMut.mutate({ id: p.id, is_top_video: !p.is_top_video }) }}
           disabled={busy}
-          className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all active:scale-95 disabled:opacity-40
-            ${p.status === 'done' ? 'bg-green-500 border-green-500' : PLAN_COLORS[p.status]?.includes('green') ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400 bg-white'}`}>
-          {p.status === 'done' && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>}
+          className={`flex-shrink-0 transition-colors disabled:opacity-40 ${p.is_top_video ? 'text-yellow-400' : 'text-gray-200 hover:text-yellow-300'}`}>
+          <IcoStar s="w-3.5 h-3.5" f={p.is_top_video} />
         </button>
-      )}
-      {/* Plattform */}
-      <PlatformIcon platform={p.platform} size="badge" />
-      {/* Solo/Partner */}
-      <span className="text-gray-400 flex-shrink-0">{p.partner_type === 'partner' ? <IcoUsers /> : <IcoUser />}</span>
-      {/* Account */}
-      {accounts?.find(a => a.id === p.account_id) && (
-        <span className="text-xs px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium flex-shrink-0 max-w-[80px] truncate">
-          {accounts.find(a => a.id === p.account_id).name}
-        </span>
-      )}
-      {/* Status-Chip */}
+        <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
+      </div>
+      {/* Row 2: milestones */}
       {!isIdeaTab && (
-        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex-shrink-0 ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-500'}`}>
-          {PLAN_STATUS[p.status]}
-        </span>
+        <div className="mt-2 pt-2 border-t border-gray-100">
+          <PlanMilestones p={p} updateMut={updateMut} busy={busy} layout="row" />
+        </div>
       )}
-      {/* Titel */}
-      <span className={`flex-1 text-sm truncate ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
-        {p.title || p.description || <span className="text-gray-300 italic text-xs">Kein Titel</span>}
-      </span>
-      {/* Posting-Warnung */}
-      {postOverdue && <span className="text-red-400 flex-shrink-0 text-xs" title="Posting-Termin überschritten">⚠</span>}
-      {p.post_date && !postOverdue && <span className="text-xs text-indigo-400 flex-shrink-0">📅</span>}
-      {/* Mini-Badges */}
-      {p.pushed_to_week && <span className="text-xs text-orange-500 font-medium flex-shrink-0">→KW{p.pushed_to_week}</span>}
-      {p.carried_over_from && !isTopTab && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
-      {/* Stern */}
-      <button onClick={e => { e.stopPropagation(); updateMut.mutate({ id: p.id, is_top_video: !p.is_top_video }) }}
-        disabled={busy}
-        className={`flex-shrink-0 transition-colors disabled:opacity-40 ${p.is_top_video ? 'text-yellow-400' : 'text-gray-200 hover:text-yellow-300'}`}>
-        <IcoStar s="w-3.5 h-3.5" f={p.is_top_video} />
-      </button>
-      {/* Chevron */}
-      <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
     </div>
   )
 }
@@ -1111,38 +1104,24 @@ function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoP
                     </div>
                   </div>
                 )}
-                {p.posted_at ? (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-semibold text-green-600 uppercase tracking-wide block mb-0.5">✓ Gepostet</span>
-                      <span className="text-xs text-gray-500">{new Date(p.posted_at).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
-                    </div>
-                    <button
-                      onClick={() => updateMut.mutate({ id: p.id, posted_at: null })}
-                      disabled={busy}
-                      className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-40">
-                      Zurücksetzen
-                    </button>
+                {p.posted_at && (
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-green-600 font-semibold">✓ Gepostet {new Date(p.posted_at).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
-                ) : (
-                  <button
-                    onClick={() => updateMut.mutate({ id: p.id, posted_at: new Date().toISOString() })}
-                    disabled={busy}
-                    className="w-full py-2 rounded-lg bg-white border border-green-300 text-green-700 text-sm font-semibold hover:bg-green-50 disabled:opacity-40 transition-colors">
-                    ✓ Als gepostet markieren
-                  </button>
                 )}
               </div>
             )}
 
-            {/* Aktionen */}
+            {/* Milestones */}
+            {!isIdeaTab && !isTopTab && (
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Fortschritt</p>
+                <PlanMilestones p={p} updateMut={updateMut} busy={busy} layout="column" />
+              </div>
+            )}
+
+            {/* Einplanen / Schieben */}
             <div className="space-y-2 pt-1">
-              {!isIdeaTab && !isTopTab && (
-                <button onClick={() => updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' })} disabled={busy}
-                  className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 ${p.status === 'done' ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' : 'bg-green-500 text-white hover:bg-green-600'}`}>
-                  {p.status === 'done' ? '↩ Als offen markieren' : '✓ Als fertig markieren'}
-                </button>
-              )}
               {isIdeaTab || isTopTab ? (
                 <button onClick={() => { onClose(); onPushRequest && onPushRequest(p) }} disabled={busy}
                   className="w-full py-2.5 rounded-xl text-sm font-semibold border border-violet-400 text-violet-600 hover:bg-violet-50 disabled:opacity-50">
@@ -2151,6 +2130,8 @@ function MeinContentTab({ week, year, onWeekChange }) {
 function KalenderTab({ week, year, onWeekChange }) {
   const qc = useQueryClient()
   const [detailPlan, setDetailPlan] = useState(null)
+  const [dropState, setDropState] = useState(null) // { plan, dateStr }
+  const [dropTime, setDropTime] = useState('')
   const isDesktop = useIsDesktop()
 
   // All plans for the year — grouped by post_date
@@ -2235,7 +2216,6 @@ function KalenderTab({ week, year, onWeekChange }) {
   function DetailPanel({ p }) {
     const overdue = p.post_date && p.status !== 'done' && p.post_date.slice(0,10) < today
     const busy = updateMut.isPending && updateMut.variables?.id === p.id
-    const nextStatus = STATUS_CYCLE_WEEK[(STATUS_CYCLE_WEEK.indexOf(p.status) + 1) % STATUS_CYCLE_WEEK.length]
     return (
       <div className="p-5 space-y-4">
         {/* Header */}
@@ -2275,20 +2255,6 @@ function KalenderTab({ week, year, onWeekChange }) {
               </button>
             )}
           </div>
-        )}
-
-        {/* Status cycle */}
-        {p.status !== 'done' && (
-          <button onClick={() => updateMut.mutate({ id: p.id, status: nextStatus })} disabled={busy}
-            className="w-full py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
-            {busy ? '…' : `→ ${PLAN_STATUS[nextStatus]}`}
-          </button>
-        )}
-        {p.status === 'done' && (
-          <button onClick={() => updateMut.mutate({ id: p.id, status: 'planned' })} disabled={busy}
-            className="w-full py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 transition-colors">
-            ↩ Als offen markieren
-          </button>
         )}
 
         {p.source_link && (
@@ -2335,7 +2301,14 @@ function KalenderTab({ week, year, onWeekChange }) {
                   const dayNum  = days[i].getUTCDate()
                   const month   = days[i].toLocaleDateString('de-DE', { month: 'short', timeZone: 'UTC' })
                   return (
-                    <div key={dateStr} className="flex flex-col min-w-0">
+                    <div key={dateStr} className="flex flex-col min-w-0"
+                      onDragOver={e => e.preventDefault()}
+                      onDrop={e => {
+                        e.preventDefault()
+                        const plan = JSON.parse(e.dataTransfer.getData('application/json'))
+                        setDropTime('')
+                        setDropState({ plan, dateStr })
+                      }}>
                       {/* Day header */}
                       <div className={`text-center mb-2 py-1.5 rounded-xl ${isToday ? 'bg-indigo-600 text-white' : 'bg-gray-50 text-gray-500'}`}>
                         <div className="text-[10px] font-semibold uppercase tracking-wide">{DAY_NAMES[i]}</div>
@@ -2343,11 +2316,9 @@ function KalenderTab({ week, year, onWeekChange }) {
                         <div className="text-[10px] opacity-60">{month}</div>
                       </div>
                       {/* Plan cards for this day */}
-                      <div className="flex-1 space-y-1.5">
-                        {plans.length === 0
-                          ? <div className="min-h-[40px] rounded-lg border border-dashed border-gray-100" />
-                          : plans.map(p => <CalPlanCard key={p.id} p={p} />)
-                        }
+                      <div className="flex-1 space-y-1.5 min-h-[40px]">
+                        {plans.map(p => <CalPlanCard key={p.id} p={p} />)}
+                        {plans.length === 0 && <div className="min-h-[40px] rounded-lg border border-dashed border-gray-100" />}
                       </div>
                     </div>
                   )
@@ -2362,8 +2333,14 @@ function KalenderTab({ week, year, onWeekChange }) {
                   </p>
                   <div className="flex flex-wrap gap-2">
                     {noDatePlans.map(p => (
-                      <button key={p.id} onClick={() => setDetailPlan(detailPlan?.id === p.id ? null : p)}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${
+                      <button key={p.id}
+                        draggable
+                        onDragStart={e => {
+                          e.dataTransfer.setData('application/json', JSON.stringify(p))
+                          e.dataTransfer.effectAllowed = 'move'
+                        }}
+                        onClick={() => setDetailPlan(detailPlan?.id === p.id ? null : p)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors cursor-grab active:cursor-grabbing ${
                           detailPlan?.id === p.id ? 'border-indigo-400 bg-indigo-50' : 'bg-white border-gray-200 hover:border-indigo-200'
                         }`}>
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(p.status)}`} />
@@ -2406,6 +2383,42 @@ function KalenderTab({ week, year, onWeekChange }) {
           </div>
         )}
       </div>
+
+      {/* Drop time dialog */}
+      {dropState && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" onClick={() => setDropState(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-2xl w-full max-w-sm mx-4 shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-semibold text-gray-900 mb-1">Posting-Termin setzen</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              <span className="font-medium text-gray-700">{dropState.plan.title || '(kein Titel)'}</span>
+              {' → '}
+              {new Date(dropState.dateStr + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
+            </p>
+            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Uhrzeit (optional)</label>
+            <input type="time" value={dropTime} onChange={e => setDropTime(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-5" />
+            <div className="flex gap-3">
+              <button onClick={() => setDropState(null)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
+                Abbrechen
+              </button>
+              <button onClick={() => {
+                  updateMut.mutate({
+                    id: dropState.plan.id,
+                    post_date: dropState.dateStr,
+                    post_time: dropTime || null
+                  })
+                  setDropState(null)
+                }}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">
+                Einplanen
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Mobile detail modal */}
       {syncedDetail && !isDesktop && createPortal(
