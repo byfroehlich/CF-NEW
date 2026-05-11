@@ -734,9 +734,13 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
               </button>
             )}
           </div>
-          <input type="time" value={f.post_time ? f.post_time.slice(0, 5) : ''}
-            onChange={e => setF(x => ({ ...x, post_time: e.target.value || null }))}
-            className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+          <div className="flex items-center gap-1">
+            <input type="time" value={f.post_time ? f.post_time.slice(0, 5) : ''}
+              onChange={e => setF(x => ({ ...x, post_time: e.target.value || null }))}
+              className="w-24 px-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            <button type="button" onClick={() => setF(x => ({ ...x, post_time: new Date().toTimeString().slice(0,5) }))}
+              className="text-[10px] text-violet-500 hover:text-violet-700 font-medium whitespace-nowrap px-1">Jetzt</button>
+          </div>
         </div>
       </div>
       <div className="flex gap-2">
@@ -756,7 +760,7 @@ function PlanMilestones({ p, updateMut, busy, layout = 'row' }) {
     e.stopPropagation()
     const updates = {
       geplant:     p.status !== 'idea'
-        ? { status: 'idea' }
+        ? { status: 'idea', post_date: null, post_time: null }
         : { status: 'planned' },
       gedreht:     (['filming','geschnitten','done'].includes(p.status) || p.posted_at)
         ? { status: 'planned' }
@@ -2426,9 +2430,21 @@ function KalenderTab({ week, year, onWeekChange }) {
               {' → '}
               {new Date(dropState.dateStr + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' })}
             </p>
-            <label className="block text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Uhrzeit (optional)</label>
-            <input type="time" value={dropTime} onChange={e => setDropTime(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 mb-5" />
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Uhrzeit (optional)</label>
+              <button type="button" onClick={() => setDropTime(new Date().toTimeString().slice(0,5))}
+                className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium">Jetzt</button>
+            </div>
+            <div className="flex gap-2 items-center mb-5">
+              <input type="time" value={dropTime} onChange={e => setDropTime(e.target.value)}
+                className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300" />
+              {dropTime && (
+                <button type="button" onClick={() => setDropTime('')}
+                  className="text-gray-400 hover:text-red-400 transition-colors p-1">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              )}
+            </div>
             <div className="flex gap-3">
               <button onClick={() => setDropState(null)}
                 className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors">
