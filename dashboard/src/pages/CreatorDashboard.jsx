@@ -722,21 +722,22 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
       {/* Posting-Termin (optional) */}
       <div>
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Posting-Termin <span className="normal-case font-normal text-gray-300">(optional)</span></p>
-        <div className="flex gap-2">
-          <input type="date" value={f.post_date || ''}
-            onChange={e => setF(x => ({ ...x, post_date: e.target.value || null }))}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+        <div className="flex gap-2 items-center">
+          <div className="flex-1 relative">
+            <input type="date" value={f.post_date || ''}
+              onChange={e => setF(x => ({ ...x, post_date: e.target.value || null }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 pr-8" />
+            {f.post_date && (
+              <button type="button" onClick={() => setF(x => ({ ...x, post_date: null, post_time: null }))}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 transition-colors">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+              </button>
+            )}
+          </div>
           <input type="time" value={f.post_time ? f.post_time.slice(0, 5) : ''}
             onChange={e => setF(x => ({ ...x, post_time: e.target.value || null }))}
-            disabled={!f.post_date}
-            className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-40" />
+            className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
         </div>
-        {f.post_date && (
-          <button type="button" onClick={() => setF(x => ({ ...x, post_date: null, post_time: null }))}
-            className="text-xs text-red-400 hover:text-red-600 mt-1">
-            Termin entfernen
-          </button>
-        )}
       </div>
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 py-2 border border-gray-300 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50">Abbrechen</button>
@@ -1357,6 +1358,7 @@ function MeinContentTab({ week, year, onWeekChange }) {
   const invAll = () => {
     qc.invalidateQueries({ queryKey: ['plans-creator'] })
     qc.invalidateQueries({ queryKey: ['plans-creator-all'] })
+    qc.invalidateQueries({ queryKey: ['plans-calendar'] })
   }
 
   const createMut = useMutation({
