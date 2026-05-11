@@ -810,7 +810,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
     <div className={`bg-white rounded-2xl border p-4 transition-all ${
       p.posted_at ? 'border-green-300 bg-green-50' :
       p.status === 'done' ? 'border-green-200 bg-green-50' :
-      p.post_date && p.status !== 'done' && p.post_date < new Date().toISOString().split('T')[0] ? 'border-red-200 bg-red-50' :
+      p.post_date && p.status !== 'done' && String(p.post_date).slice(0,10) < new Date().toISOString().split('T')[0] ? 'border-red-200 bg-red-50' :
       p.pushed_to_week ? 'border-orange-300 bg-orange-100 opacity-75' :
       'border-gray-200'
     }`}>
@@ -822,7 +822,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
       {editId === p.id ? (
         <PlanForm
-          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date || null, post_time: p.post_time ? p.post_time.slice(0, 5) : null }}
+          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date ? String(p.post_date).slice(0,10) : null, post_time: p.post_time ? p.post_time.slice(0, 5) : null }}
           onSave={f => updateMut.mutate({ id: p.id, ...f })}
           onCancel={() => setEditId(null)}
           isPending={updateMut.isPending}
@@ -884,7 +884,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                 {overdue ? '⚠' : p.posted_at ? '✓' : '📅'}
                 <span>
                   {overdue ? 'Termin überschritten: ' : p.posted_at ? 'Gepostet am: ' : 'Posting: '}
-                  {new Date(p.post_date + 'T00:00:00Z').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                  {new Date(String(p.post_date).slice(0,10) + 'T00:00:00Z').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}
                   {p.post_time && ` · ${p.post_time.slice(0,5)} Uhr`}
                 </span>
               </div>
@@ -1042,7 +1042,7 @@ function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoP
       <div className="px-5 py-5 space-y-4 overflow-y-auto flex-1">
         {editing ? (
           <PlanForm
-            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date || null, post_time: p.post_time ? p.post_time.slice(0, 5) : null }}
+            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date ? String(p.post_date).slice(0,10) : null, post_time: p.post_time ? p.post_time.slice(0, 5) : null }}
             onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
             onCancel={() => setEditing(false)}
             isPending={updateMut.isPending}
@@ -1090,16 +1090,16 @@ function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoP
             {(p.post_date || p.posted_at) && (
               <div className={`rounded-xl px-4 py-3 space-y-2 ${
                 p.posted_at ? 'bg-green-50 border border-green-200' :
-                p.post_date && p.status !== 'done' && p.post_date < new Date().toISOString().split('T')[0] ? 'bg-red-50 border border-red-200' :
+                p.post_date && p.status !== 'done' && String(p.post_date).slice(0,10) < new Date().toISOString().split('T')[0] ? 'bg-red-50 border border-red-200' :
                 'bg-indigo-50 border border-indigo-100'
               }`}>
                 {p.post_date && (
                   <div>
                     <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Posting-Termin</span>
                     <div className={`text-sm font-medium ${
-                      p.post_date < new Date().toISOString().split('T')[0] && p.status !== 'done' ? 'text-red-600' : 'text-gray-800'
+                      String(p.post_date).slice(0,10) < new Date().toISOString().split('T')[0] && p.status !== 'done' ? 'text-red-600' : 'text-gray-800'
                     }`}>
-                      {new Date(p.post_date + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}
+                      {new Date(String(p.post_date).slice(0,10) + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}
                       {p.post_time && <span className="ml-2 text-gray-500">· {p.post_time.slice(0, 5)} Uhr</span>}
                     </div>
                   </div>
@@ -2240,7 +2240,7 @@ function KalenderTab({ week, year, onWeekChange }) {
           <div className={`rounded-xl px-4 py-3 ${overdue && !p.posted_at ? 'bg-red-50 border border-red-200' : p.posted_at ? 'bg-green-50 border border-green-200' : 'bg-indigo-50 border border-indigo-100'}`}>
             <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1">Posting-Termin</span>
             <p className={`text-sm font-medium ${overdue && !p.posted_at ? 'text-red-700' : 'text-gray-800'}`}>
-              {new Date(p.post_date + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}
+              {new Date(String(p.post_date).slice(0,10) + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}
               {p.post_time && <span className="ml-2 text-gray-500 font-normal">· {p.post_time.slice(0,5)} Uhr</span>}
             </p>
             {p.posted_at ? (
