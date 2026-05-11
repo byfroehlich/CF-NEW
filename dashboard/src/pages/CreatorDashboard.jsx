@@ -80,8 +80,8 @@ function WeekStrip({ week, year, onChange }) {
 
 const STATUS_LABELS = { open:'Offen', in_progress:'In Arbeit', delivered:'Geliefert', confirmed:'Bestätigt', carried:'Übertrag' }
 const STATUS_COLORS = { open:'bg-red-100 text-red-700', in_progress:'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', confirmed:'bg-blue-100 text-blue-700', carried:'bg-yellow-100 text-yellow-700' }
-const PLAN_STATUS = { idea:'Idee', planned:'Geplant', filming:'Am Filmen', done:'Fertig' }
-const PLAN_COLORS = { idea:'bg-gray-100 text-gray-600', planned:'bg-blue-100 text-blue-700', filming:'bg-orange-100 text-orange-700', done:'bg-green-100 text-green-700' }
+const PLAN_STATUS = { idea:'Idee', planned:'Geplant', filming:'Dreh', geschnitten:'Schnitt', done:'Fertig' }
+const PLAN_COLORS = { idea:'bg-gray-100 text-gray-600', planned:'bg-blue-100 text-blue-700', filming:'bg-pink-100 text-pink-700', geschnitten:'bg-violet-100 text-violet-700', done:'bg-green-100 text-green-700' }
 const LOCATION_TAGS   = ['outdoor','indoor','auto','stadt']
 const LOCATION_LABELS = { outdoor:'Outdoor', indoor:'Indoor', auto:'Auto', stadt:'Stadt' }
 
@@ -106,11 +106,11 @@ function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
       </div>
 
       {/* Pill-Tabs */}
-      <div className="max-w-2xl mx-auto mt-4 flex gap-2">
-        {['Aufträge','Mein Content','Statistik'].map(t => (
+      <div className="max-w-2xl mx-auto mt-4 flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
+        {['Aufträge','Mein Content','Kalender','Statistik'].map(t => (
           <button key={t} onClick={() => {/* handled by parent */}}
             data-tab={t}
-            className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${tab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${tab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
             {t}
           </button>
         ))}
@@ -557,7 +557,7 @@ function AuftraegeTab({ week, year, onWeekChange }) {
   )
 }
 
-const STATUS_CYCLE_WEEK = ['planned', 'done']  // Wochenplan: nur geplant ↔ fertig
+const STATUS_CYCLE_WEEK = ['planned', 'filming', 'geschnitten', 'done']
 
 function nextWeekOf(week, year) {
   if (week >= 52) return { week: 1, year: year + 1 }
@@ -709,12 +709,34 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
             className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500">
             <option value="idea">Idee</option>
             <option value="planned">Geplant</option>
+            <option value="filming">Dreh</option>
+            <option value="geschnitten">Schnitt</option>
+            <option value="done">Fertig</option>
           </select>
         )}
         <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer select-none whitespace-nowrap">
           <input type="checkbox" checked={f.visible_to_agency} onChange={e => setF(x => ({ ...x, visible_to_agency: e.target.checked }))} className="rounded" />
           Agentur sichtbar
         </label>
+      </div>
+      {/* Posting-Termin (optional) */}
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Posting-Termin <span className="normal-case font-normal text-gray-300">(optional)</span></p>
+        <div className="flex gap-2">
+          <input type="date" value={f.post_date || ''}
+            onChange={e => setF(x => ({ ...x, post_date: e.target.value || null }))}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+          <input type="time" value={f.post_time || ''}
+            onChange={e => setF(x => ({ ...x, post_time: e.target.value || null }))}
+            disabled={!f.post_date}
+            className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-40" />
+        </div>
+        {f.post_date && (
+          <button type="button" onClick={() => setF(x => ({ ...x, post_date: null, post_time: null }))}
+            className="text-xs text-red-400 hover:text-red-600 mt-1">
+            Termin entfernen
+          </button>
+        )}
       </div>
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 py-2 border border-gray-300 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50">Abbrechen</button>
@@ -743,6 +765,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
   return (
     <div className={`bg-white rounded-2xl border p-4 transition-all ${
       p.status === 'done' ? 'border-green-300 bg-green-100' :
+      p.post_date && p.status !== 'done' && p.post_date < new Date().toISOString().split('T')[0] ? 'border-red-200 bg-red-50' :
       p.pushed_to_week ? 'border-orange-300 bg-orange-100 opacity-75' :
       'border-gray-200'
     }`}>
@@ -754,7 +777,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
       {editId === p.id ? (
         <PlanForm
-          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [] }}
+          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date || null, post_time: p.post_time || null }}
           onSave={f => updateMut.mutate({ id: p.id, ...f })}
           onCancel={() => setEditId(null)}
           isPending={updateMut.isPending}
@@ -821,6 +844,20 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
                   ))}
                 </div>
               )}
+              {p.post_date && (() => {
+                const overdue = p.status !== 'done' && p.post_date < new Date().toISOString().split('T')[0]
+                return (
+                  <div className={`flex items-center gap-1.5 mt-1.5 text-xs font-medium ${overdue ? 'text-red-500' : 'text-indigo-500'}`}>
+                    {overdue ? '⚠' : '📅'}
+                    <span>
+                      {overdue ? 'Termin überschritten: ' : 'Posting: '}
+                      {new Date(p.post_date + 'T00:00:00Z').toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}
+                      {p.post_time && ` · ${p.post_time.slice(0,5)} Uhr`}
+                    </span>
+                    {p.posted_at && <span className="ml-1 text-green-500 font-semibold">✓ gepostet</span>}
+                  </div>
+                )
+              })()}
               {p.source_link && (
                 <button onClick={() => setShowPreview(true)}
                   className="inline-flex items-center gap-1 mt-1.5 text-xs text-violet-600 hover:text-violet-800 font-medium">
@@ -930,19 +967,22 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
 // ── Plan List Row (kompakte Listenansicht) ───────────────────
 function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, accounts }) {
+  const postOverdue = p.post_date && p.status !== 'done' && new Date(p.post_date) < new Date()
+  const nextStatus = STATUS_CYCLE_WEEK[(STATUS_CYCLE_WEEK.indexOf(p.status) + 1) % STATUS_CYCLE_WEEK.length]
   return (
     <div onClick={onClick}
       className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-colors select-none ${
         p.status === 'done'    ? 'bg-green-50 border border-green-200' :
+        postOverdue            ? 'bg-red-50 border border-red-200' :
         p.pushed_to_week       ? 'bg-orange-50 border border-orange-200 opacity-75' :
         'bg-white border border-gray-200 active:bg-gray-50'
       }`}>
-      {/* Fertig-Toggle */}
+      {/* Status-Toggle */}
       {!isIdeaTab && (
-        <button onClick={e => { e.stopPropagation(); updateMut.mutate({ id: p.id, status: p.status === 'done' ? 'planned' : 'done' }) }}
+        <button onClick={e => { e.stopPropagation(); updateMut.mutate({ id: p.id, status: nextStatus }) }}
           disabled={busy}
-          className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all active:scale-95
-            ${p.status === 'done' ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400 bg-white'} disabled:opacity-40`}>
+          className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all active:scale-95 disabled:opacity-40
+            ${p.status === 'done' ? 'bg-green-500 border-green-500' : PLAN_COLORS[p.status]?.includes('green') ? 'bg-green-500 border-green-500' : 'border-gray-300 hover:border-green-400 bg-white'}`}>
           {p.status === 'done' && <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>}
         </button>
       )}
@@ -956,19 +996,28 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, account
           {accounts.find(a => a.id === p.account_id).name}
         </span>
       )}
+      {/* Status-Chip */}
+      {!isIdeaTab && (
+        <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold flex-shrink-0 ${PLAN_COLORS[p.status] || 'bg-gray-100 text-gray-500'}`}>
+          {PLAN_STATUS[p.status]}
+        </span>
+      )}
       {/* Titel */}
       <span className={`flex-1 text-sm truncate ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-800'}`}>
         {p.title || p.description || <span className="text-gray-300 italic text-xs">Kein Titel</span>}
       </span>
+      {/* Posting-Warnung */}
+      {postOverdue && <span className="text-red-400 flex-shrink-0 text-xs" title="Posting-Termin überschritten">⚠</span>}
+      {p.post_date && !postOverdue && <span className="text-xs text-indigo-400 flex-shrink-0">📅</span>}
       {/* Mini-Badges */}
       {p.pushed_to_week && <span className="text-xs text-orange-500 font-medium flex-shrink-0">→KW{p.pushed_to_week}</span>}
       {p.carried_over_from && !isTopTab && <span className="text-xs text-amber-600 flex-shrink-0">↩</span>}
-      {p.is_top_video && <span className="text-yellow-400 flex-shrink-0"><IcoStar s="w-3.5 h-3.5" f={true} /></span>}
-      {(p.location_tags || []).length > 0 && (
-        <span className="text-xs px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-500 font-medium flex-shrink-0 border border-sky-100">
-          {p.location_tags.map(t => LOCATION_LABELS[t]).join(' · ')}
-        </span>
-      )}
+      {/* Stern */}
+      <button onClick={e => { e.stopPropagation(); updateMut.mutate({ id: p.id, is_top_video: !p.is_top_video }) }}
+        disabled={busy}
+        className={`flex-shrink-0 transition-colors disabled:opacity-40 ${p.is_top_video ? 'text-yellow-400' : 'text-gray-200 hover:text-yellow-300'}`}>
+        <IcoStar s="w-3.5 h-3.5" f={p.is_top_video} />
+      </button>
       {/* Chevron */}
       <svg className="w-3.5 h-3.5 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
     </div>
@@ -1000,7 +1049,7 @@ function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoP
       <div className="px-5 py-5 space-y-4 overflow-y-auto flex-1">
         {editing ? (
           <PlanForm
-            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [] }}
+            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date || null, post_time: p.post_time || null }}
             onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
             onCancel={() => setEditing(false)}
             isPending={updateMut.isPending}
@@ -1043,6 +1092,48 @@ function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoP
               </button>
             )}
             {showPreview && <VideoModal url={p.source_link} onClose={() => setShowPreview(false)} />}
+
+            {/* Posting-Termin + gepostet */}
+            {(p.post_date || p.posted_at) && (
+              <div className={`rounded-xl px-4 py-3 space-y-2 ${
+                p.posted_at ? 'bg-green-50 border border-green-200' :
+                p.post_date && p.status !== 'done' && p.post_date < new Date().toISOString().split('T')[0] ? 'bg-red-50 border border-red-200' :
+                'bg-indigo-50 border border-indigo-100'
+              }`}>
+                {p.post_date && (
+                  <div>
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-0.5">Posting-Termin</span>
+                    <div className={`text-sm font-medium ${
+                      p.post_date < new Date().toISOString().split('T')[0] && p.status !== 'done' ? 'text-red-600' : 'text-gray-800'
+                    }`}>
+                      {new Date(p.post_date + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })}
+                      {p.post_time && <span className="ml-2 text-gray-500">· {p.post_time.slice(0, 5)} Uhr</span>}
+                    </div>
+                  </div>
+                )}
+                {p.posted_at ? (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-green-600 uppercase tracking-wide block mb-0.5">✓ Gepostet</span>
+                      <span className="text-xs text-gray-500">{new Date(p.posted_at).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <button
+                      onClick={() => updateMut.mutate({ id: p.id, posted_at: null })}
+                      disabled={busy}
+                      className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-40">
+                      Zurücksetzen
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => updateMut.mutate({ id: p.id, posted_at: new Date().toISOString() })}
+                    disabled={busy}
+                    className="w-full py-2 rounded-lg bg-white border border-green-300 text-green-700 text-sm font-semibold hover:bg-green-50 disabled:opacity-40 transition-colors">
+                    ✓ Als gepostet markieren
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Aktionen */}
             <div className="space-y-2 pt-1">
@@ -1248,8 +1339,8 @@ function MeinContentTab({ week, year, onWeekChange }) {
 
   const canCreate = subTab !== 'woche' || selectedAccountId !== null || accounts.length === 0
 
-  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '', location_tags: [] }
-  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '', location_tags: [] }
+  const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '', location_tags: [], post_date: null, post_time: null }
+  const EMPTY_IDEA = { platform: 'IG', title: '', description: '', source_link: '', status: 'idea',   visible_to_agency: false, partner_type: 'solo', requisiten: '', kleidung: '', location_tags: [], post_date: null, post_time: null }
 
   // Wochenplan: aktuelle KW, gefiltert nach selectedAccountId
   const { data: weekRaw = [], isLoading: weekLoading, isError: weekError, error: weekErr } = useQuery({
@@ -2056,6 +2147,282 @@ function MeinContentTab({ week, year, onWeekChange }) {
   )
 }
 
+// ── Kalender Tab ─────────────────────────────────────────────
+function KalenderTab({ week, year, onWeekChange }) {
+  const qc = useQueryClient()
+  const [detailPlan, setDetailPlan] = useState(null)
+  const isDesktop = useIsDesktop()
+
+  // All plans for the year — grouped by post_date
+  const { data: allPlans = [], isLoading } = useQuery({
+    queryKey: ['plans-calendar', year],
+    queryFn: () => getContentPlans({ year })
+  })
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['plans-calendar'] })
+      qc.invalidateQueries({ queryKey: ['plans-creator'] })
+      qc.invalidateQueries({ queryKey: ['plans-creator-all'] })
+    }
+  })
+
+  // Calculate Mon–Sun dates for the ISO week
+  function weekDates(w, y) {
+    const jan4 = new Date(Date.UTC(y, 0, 4))
+    const dow = jan4.getUTCDay() || 7
+    const monday = new Date(jan4)
+    monday.setUTCDate(jan4.getUTCDate() - (dow - 1) + (w - 1) * 7)
+    return Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(monday)
+      d.setUTCDate(monday.getUTCDate() + i)
+      return d
+    })
+  }
+
+  const days     = weekDates(week, year)
+  const dayStrs  = days.map(d => d.toISOString().split('T')[0])
+  const today    = new Date().toISOString().split('T')[0]
+  const DAY_NAMES = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+
+  // Plans by calendar day (post_date)
+  const byDay = dayStrs.map(ds => ({
+    dateStr: ds,
+    plans: allPlans
+      .filter(p => p.post_date && p.post_date.slice(0, 10) === ds)
+      .sort((a, b) => (a.post_time || '').localeCompare(b.post_time || ''))
+  }))
+
+  // Plans in this editorial week WITHOUT a post_date (show separately)
+  const noDatePlans = allPlans.filter(p =>
+    p.week_number === week && p.year === year && !p.post_date && p.status !== 'idea'
+  )
+
+  const totalWithDate = byDay.reduce((s, d) => s + d.plans.length, 0)
+  const syncedDetail  = detailPlan ? allPlans.find(p => p.id === detailPlan.id) || detailPlan : null
+
+  function statusDot(s) {
+    return { idea:'bg-gray-300', planned:'bg-blue-400', filming:'bg-pink-400', geschnitten:'bg-violet-400', done:'bg-green-400' }[s] || 'bg-gray-300'
+  }
+
+  function CalPlanCard({ p }) {
+    const overdue = p.post_date && p.status !== 'done' && p.post_date.slice(0,10) < today
+    const isSelected = detailPlan?.id === p.id
+    return (
+      <button onClick={() => setDetailPlan(isSelected ? null : p)}
+        className={`w-full text-left px-2 py-1.5 rounded-lg border transition-colors ${
+          isSelected     ? 'border-indigo-400 bg-indigo-50 ring-1 ring-indigo-200' :
+          p.posted_at    ? 'bg-green-50 border-green-200' :
+          p.status === 'done' ? 'bg-green-50 border-green-200 opacity-70' :
+          overdue        ? 'bg-red-50 border-red-200' :
+          'bg-white border-gray-200 hover:border-indigo-200 hover:shadow-sm'
+        }`}>
+        <div className="flex items-center gap-1 mb-0.5">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(p.status)}`} />
+          <PlatformIcon platform={p.platform} size="badge" />
+          {p.post_time && <span className="text-[10px] text-gray-400 ml-auto flex-shrink-0">{p.post_time.slice(0,5)}</span>}
+          {p.posted_at && <span className="text-[10px] text-green-500 font-bold ml-auto">✓</span>}
+        </div>
+        <p className={`text-xs leading-snug ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-700'}`}>
+          {p.title || <span className="italic text-gray-300">Kein Titel</span>}
+        </p>
+      </button>
+    )
+  }
+
+  // Compact action panel (shown on right on desktop, modal on mobile)
+  function DetailPanel({ p }) {
+    const overdue = p.post_date && p.status !== 'done' && p.post_date.slice(0,10) < today
+    const busy = updateMut.isPending && updateMut.variables?.id === p.id
+    const nextStatus = STATUS_CYCLE_WEEK[(STATUS_CYCLE_WEEK.indexOf(p.status) + 1) % STATUS_CYCLE_WEEK.length]
+    return (
+      <div className="p-5 space-y-4">
+        {/* Header */}
+        <div className="flex items-center justify-between pb-4 border-b border-gray-100">
+          <div className="flex items-center gap-2">
+            <PlatformIcon platform={p.platform} size="badge" />
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${PLAN_COLORS[p.status]}`}>
+              {PLAN_STATUS[p.status]}
+            </span>
+          </div>
+          <button onClick={() => setDetailPlan(null)}
+            className="w-7 h-7 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-500 transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
+        </div>
+
+        {p.title && <h3 className="text-base font-semibold text-gray-900">{p.title}</h3>}
+        {p.description && <p className="text-sm text-gray-500 whitespace-pre-wrap">{p.description}</p>}
+
+        {/* Posting-Termin */}
+        {p.post_date && (
+          <div className={`rounded-xl px-4 py-3 ${overdue && !p.posted_at ? 'bg-red-50 border border-red-200' : p.posted_at ? 'bg-green-50 border border-green-200' : 'bg-indigo-50 border border-indigo-100'}`}>
+            <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide block mb-1">Posting-Termin</span>
+            <p className={`text-sm font-medium ${overdue && !p.posted_at ? 'text-red-700' : 'text-gray-800'}`}>
+              {new Date(p.post_date + 'T00:00:00Z').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })}
+              {p.post_time && <span className="ml-2 text-gray-500 font-normal">· {p.post_time.slice(0,5)} Uhr</span>}
+            </p>
+            {p.posted_at ? (
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-xs text-green-600 font-semibold">✓ Gepostet {new Date(p.posted_at).toLocaleString('de-DE', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                <button onClick={() => updateMut.mutate({ id: p.id, posted_at: null })} disabled={busy} className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-40">Zurücksetzen</button>
+              </div>
+            ) : (
+              <button onClick={() => updateMut.mutate({ id: p.id, posted_at: new Date().toISOString() })} disabled={busy}
+                className="w-full mt-2 py-1.5 rounded-lg bg-white border border-green-300 text-green-700 text-xs font-semibold hover:bg-green-50 disabled:opacity-40 transition-colors">
+                ✓ Als gepostet markieren
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Status cycle */}
+        {p.status !== 'done' && (
+          <button onClick={() => updateMut.mutate({ id: p.id, status: nextStatus })} disabled={busy}
+            className="w-full py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+            {busy ? '…' : `→ ${PLAN_STATUS[nextStatus]}`}
+          </button>
+        )}
+        {p.status === 'done' && (
+          <button onClick={() => updateMut.mutate({ id: p.id, status: 'planned' })} disabled={busy}
+            className="w-full py-2.5 rounded-xl text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-40 transition-colors">
+            ↩ Als offen markieren
+          </button>
+        )}
+
+        {p.source_link && (
+          <a href={p.source_link} target="_blank" rel="noreferrer"
+            className="flex items-center gap-2 text-xs text-violet-600 hover:text-violet-800 font-medium">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+            Beispiel-Link öffnen
+          </a>
+        )}
+
+        {/* Star + agency visibility */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+            <input type="checkbox" checked={p.visible_to_agency} disabled={busy}
+              onChange={e => updateMut.mutate({ id: p.id, visible_to_agency: e.target.checked })}
+              className="rounded accent-violet-600 disabled:opacity-50" />
+            Agentur sichtbar
+          </label>
+          <button onClick={() => updateMut.mutate({ id: p.id, is_top_video: !p.is_top_video })} disabled={busy}
+            className={`p-1.5 rounded-lg transition-colors disabled:opacity-40 ${p.is_top_video ? 'text-yellow-500 hover:text-yellow-600' : 'text-gray-300 hover:text-yellow-400'}`}>
+            <IcoStar s="w-4 h-4" f={p.is_top_video} />
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Week navigation */}
+      <WeekStrip week={week} year={year} onChange={onWeekChange} />
+
+      <div className="flex flex-1 overflow-hidden">
+        {/* Calendar grid */}
+        <div className="flex-1 overflow-auto p-4">
+          {isLoading ? (
+            <p className="text-center text-gray-400 text-sm py-16">Lädt…</p>
+          ) : (
+            <>
+              {/* 7-column day grid */}
+              <div className="grid grid-cols-7 gap-2" style={{ minHeight: '200px' }}>
+                {byDay.map(({ dateStr, plans }, i) => {
+                  const isToday = dateStr === today
+                  const dayNum  = days[i].getUTCDate()
+                  const month   = days[i].toLocaleDateString('de-DE', { month: 'short', timeZone: 'UTC' })
+                  return (
+                    <div key={dateStr} className="flex flex-col min-w-0">
+                      {/* Day header */}
+                      <div className={`text-center mb-2 py-1.5 rounded-xl ${isToday ? 'bg-indigo-600 text-white' : 'bg-gray-50 text-gray-500'}`}>
+                        <div className="text-[10px] font-semibold uppercase tracking-wide">{DAY_NAMES[i]}</div>
+                        <div className={`text-base font-bold leading-tight ${isToday ? 'text-white' : 'text-gray-800'}`}>{dayNum}</div>
+                        <div className="text-[10px] opacity-60">{month}</div>
+                      </div>
+                      {/* Plan cards for this day */}
+                      <div className="flex-1 space-y-1.5">
+                        {plans.length === 0
+                          ? <div className="min-h-[40px] rounded-lg border border-dashed border-gray-100" />
+                          : plans.map(p => <CalPlanCard key={p.id} p={p} />)
+                        }
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* Plans without post_date in this editorial week */}
+              {noDatePlans.length > 0 && (
+                <div className="mt-6">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+                    KW{week} — kein Posting-Termin gesetzt ({noDatePlans.length})
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {noDatePlans.map(p => (
+                      <button key={p.id} onClick={() => setDetailPlan(detailPlan?.id === p.id ? null : p)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-sm transition-colors ${
+                          detailPlan?.id === p.id ? 'border-indigo-400 bg-indigo-50' : 'bg-white border-gray-200 hover:border-indigo-200'
+                        }`}>
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(p.status)}`} />
+                        <PlatformIcon platform={p.platform} size="badge" />
+                        <span className="text-xs text-gray-700 max-w-[120px] truncate">{p.title || '(kein Titel)'}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${PLAN_COLORS[p.status]}`}>{PLAN_STATUS[p.status]}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {totalWithDate === 0 && noDatePlans.length === 0 && (
+                <div className="text-center py-16">
+                  <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mx-auto mb-3">
+                    <IcoCal s="w-8 h-8 text-gray-200" />
+                  </div>
+                  <p className="text-gray-400 text-sm">Keine Posting-Termine für KW{week}</p>
+                  <p className="text-xs text-gray-300 mt-1">Lege beim Planen einen Posting-Termin fest</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Right detail panel (desktop) */}
+        {isDesktop && (
+          <div className="w-80 flex-shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+            {syncedDetail ? (
+              <DetailPanel p={syncedDetail} />
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <div className="w-14 h-14 rounded-2xl bg-gray-50 flex items-center justify-center mb-3">
+                  <IcoCal s="w-7 h-7 text-gray-200" />
+                </div>
+                <p className="text-sm font-medium text-gray-400">Plan auswählen</p>
+                <p className="text-xs text-gray-300 mt-1">Klicke auf einen Plan im Kalender</p>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Mobile detail modal */}
+      {syncedDetail && !isDesktop && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-end justify-center" onClick={() => setDetailPlan(null)}>
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+          <div className="relative bg-white rounded-t-3xl w-full max-w-lg shadow-2xl overflow-y-auto"
+               style={{ maxHeight: '75dvh' }} onClick={e => e.stopPropagation()}>
+            <div className="flex justify-center pt-3 pb-1"><div className="w-10 h-1 rounded-full bg-gray-300" /></div>
+            <DetailPanel p={syncedDetail} />
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  )
+}
+
 // ── Statistik Tab ────────────────────────────────────────────
 const PERIOD_LABELS = { month: 'Monat', quarter: 'Quartal', half: 'Halbjahr', year: 'Jahr' }
 const MONTH_NAMES = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
@@ -2643,11 +3010,11 @@ export default function CreatorDashboard() {
             <button onClick={handleLogout} className="text-xs text-white/70 hover:text-white">Abmelden</button>
           </div>
         </div>
-        {/* Pill-Tabs — left-aligned on desktop */}
-        <div className="mt-4 flex gap-1 pb-1 lg:justify-start justify-center">
-          {['Aufträge','Mein Content','Profil','Statistik'].map(t => (
+        {/* Pill-Tabs */}
+        <div className="mt-4 flex gap-1.5 pb-1 overflow-x-auto scrollbar-hide">
+          {['Aufträge','Mein Content','Kalender','Profil','Statistik'].map(t => (
             <button key={t} onClick={() => setActiveTab(t)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
               {t}
             </button>
           ))}
@@ -2658,6 +3025,7 @@ export default function CreatorDashboard() {
       <div className="lg:flex-1 lg:overflow-hidden">
         {activeTab === 'Mein Content' && <MeinContentTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
         {activeTab === 'Aufträge'     && <AuftraegeTab   week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
+        {activeTab === 'Kalender'     && <KalenderTab    week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
         {(activeTab === 'Profil' || activeTab === 'Statistik') && (
           <div className="max-w-3xl mx-auto px-6 py-6">
             {activeTab === 'Profil'    && <ProfilTab />}

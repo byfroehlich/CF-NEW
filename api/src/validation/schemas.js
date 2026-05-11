@@ -110,7 +110,7 @@ export const contentPlanSchema = z.object({
   title: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   source_link: z.string().optional().nullable(),
-  status: z.enum(['idea','planned','filming','done']).default('idea'),
+  status: z.enum(['idea','planned','filming','geschnitten','done']).default('idea'),
   visible_to_agency: z.boolean().default(false),
   partner_type: z.enum(['solo','partner']).default('solo'),
   carried_over_from: z.string().uuid().optional().nullable(),
@@ -118,13 +118,15 @@ export const contentPlanSchema = z.object({
   kleidung: z.string().optional().nullable(),
   account_id: z.string().uuid().optional().nullable(),
   location_tags: z.array(z.enum(['outdoor','indoor','auto','stadt'])).optional().default([]),
+  post_date: z.string().optional().nullable(),
+  post_time: z.string().optional().nullable(),
 })
 
 export const contentPlanUpdateSchema = z.object({
   title: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   source_link: z.string().optional().nullable(),
-  status: z.enum(['idea','planned','filming','done']).optional(),
+  status: z.enum(['idea','planned','filming','geschnitten','done']).optional(),
   visible_to_agency: z.boolean().optional(),
   platform: z.enum(['IG','TK','OF','FL','ML','OTHER']).optional(),
   partner_type: z.enum(['solo','partner']).optional(),
@@ -137,4 +139,7 @@ export const contentPlanUpdateSchema = z.object({
   account_id: z.string().uuid().optional().nullable(),
   is_top_video: z.boolean().optional(),
   location_tags: z.array(z.enum(['outdoor','indoor','auto','stadt'])).optional(),
+  post_date: z.string().optional().nullable(),
+  post_time: z.string().optional().nullable(),
+  posted_at: z.string().datetime().optional().nullable(),
 })
