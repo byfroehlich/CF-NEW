@@ -726,7 +726,7 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
           <input type="date" value={f.post_date || ''}
             onChange={e => setF(x => ({ ...x, post_date: e.target.value || null }))}
             className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
-          <input type="time" value={f.post_time || ''}
+          <input type="time" value={f.post_time ? f.post_time.slice(0, 5) : ''}
             onChange={e => setF(x => ({ ...x, post_time: e.target.value || null }))}
             disabled={!f.post_date}
             className="w-28 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-40" />
@@ -777,7 +777,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
       {editId === p.id ? (
         <PlanForm
-          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date || null, post_time: p.post_time || null }}
+          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date || null, post_time: p.post_time ? p.post_time.slice(0, 5) : null }}
           onSave={f => updateMut.mutate({ id: p.id, ...f })}
           onCancel={() => setEditId(null)}
           isPending={updateMut.isPending}
@@ -1049,7 +1049,7 @@ function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoP
       <div className="px-5 py-5 space-y-4 overflow-y-auto flex-1">
         {editing ? (
           <PlanForm
-            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date || null, post_time: p.post_time || null }}
+            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date || null, post_time: p.post_time ? p.post_time.slice(0, 5) : null }}
             onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
             onCancel={() => setEditing(false)}
             isPending={updateMut.isPending}
