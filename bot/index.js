@@ -21,6 +21,30 @@ async function getKnownChatIds() {
   return new Set(creators.map(c => String(c.telegram_chat_id)))
 }
 
+// Bot wurde einer Gruppe hinzugefügt → Chat-ID an Admin schicken
+bot.on('my_chat_member', async (ctx) => {
+  try {
+    const update = ctx.myChatMember
+    const newStatus = update.new_chat_member?.status
+    const chat = update.chat
+    if ((newStatus === 'member' || newStatus === 'administrator') && chat.type !== 'private') {
+      const adminId = process.env.ADMIN_TELEGRAM_ID
+      if (adminId) {
+        await ctx.telegram.sendMessage(
+          adminId,
+          `🤖 Bot wurde einer Gruppe hinzugefügt:\n\n` +
+          `Gruppe: ${chat.title || '(kein Titel)'}\n` +
+          `Chat-ID: \`${chat.id}\`\n\n` +
+          `Diese ID im Creator-Profil als Telegram Chat-ID eintragen.`,
+          { parse_mode: 'Markdown' }
+        )
+      }
+    }
+  } catch (err) {
+    console.error('my_chat_member error:', err.message)
+  }
+})
+
 bot.on('message', async (ctx) => {
   try {
     const knownChats = await getKnownChatIds()
