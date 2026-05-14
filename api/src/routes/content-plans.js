@@ -210,6 +210,11 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
         if (!tc) return res.status(403).json({ error: 'Kein Zugriff auf diesen Creator' })
         targetCreatorId = tc.id
         targetAgencyId  = tc.agency_id
+      } else if (req.user.role === 'creator') {
+        const [tc] = await sql`SELECT id, agency_id FROM creators WHERE id = ${f.creator_id} AND agency_id = ${req.user.agency_id} AND deleted_at IS NULL`
+        if (!tc) return res.status(403).json({ error: 'Kein Zugriff auf diesen Creator' })
+        targetCreatorId = tc.id
+        targetAgencyId  = tc.agency_id
       }
     }
 

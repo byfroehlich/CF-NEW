@@ -42,12 +42,19 @@ router.patch('/me/photo', requireAnyRole, async (req, res) => {
   }
 })
 
-// GET /api/v1/creators — Admin: alle; Agency: eigene
-router.get('/', requireAgencyOrAdmin, async (req, res) => {
+// GET /api/v1/creators — Admin: alle; Agency: eigene; Creator: selbe Agentur (sichere Felder)
+router.get('/', requireAnyRole, async (req, res) => {
   try {
-    const creators = req.user.role === 'admin'
-      ? await sql`SELECT id, agency_id, real_name, artist_name, photo_url, contact_email, phone, birthday, platforms, telegram_chat_id, active, created_at FROM creators WHERE deleted_at IS NULL ORDER BY real_name`
-      : await sql`SELECT id, agency_id, real_name, artist_name, photo_url, contact_email, phone, birthday, platforms, telegram_chat_id, active, created_at FROM creators WHERE agency_id = ${req.user.agency_id} AND deleted_at IS NULL ORDER BY real_name`
+    let creators
+    if (req.user.role === 'admin') {
+      creators = await sql`SELECT id, agency_id, real_name, artist_name, photo_url, contact_email, phone, birthday, platforms, telegram_chat_id, active, created_at FROM creators WHERE deleted_at IS NULL ORDER BY real_name`
+    } else if (req.user.role === 'agency') {
+      creators = await sql`SELECT id, agency_id, real_name, artist_name, photo_url, contact_email, phone, birthday, platforms, telegram_chat_id, active, created_at FROM creators WHERE agency_id = ${req.user.agency_id} AND deleted_at IS NULL ORDER BY real_name`
+    } else {
+      // Creator: nur eigene Agentur, keine internen Felder
+      if (!req.user.agency_id) return res.json([])
+      creators = await sql`SELECT id, agency_id, artist_name, photo_url, platforms, active, created_at FROM creators WHERE agency_id = ${req.user.agency_id} AND deleted_at IS NULL ORDER BY artist_name`
+    }
     res.json(creators)
   } catch (err) {
     res.status(500).json({ error: 'Serverfehler' })

@@ -217,7 +217,7 @@ function EditPlanModal({ plan, onClose, onSave, isPending }) {
   const { data: creators = [] } = useQuery({
     queryKey: ['creators-list'],
     queryFn:  () => getCreators(),
-    enabled:  role === 'admin' || role === 'agency',
+    enabled:  role === 'admin' || role === 'agency' || role === 'creator',
   })
 
   function handleSave() {
@@ -329,8 +329,8 @@ function EditPlanModal({ plan, onClose, onSave, isPending }) {
             Für Agentur sichtbar
           </label>
 
-          {/* Creator-Selector (Admin / Agency) */}
-          {(role === 'admin' || role === 'agency') && creators.length > 0 && (
+          {/* Creator-Selector (Admin / Agency / Creator) */}
+          {creators.length > 1 && (
             <div>
               <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">
                 Account verschieben
