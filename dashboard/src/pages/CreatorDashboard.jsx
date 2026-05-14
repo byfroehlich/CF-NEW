@@ -89,27 +89,19 @@ const LOCATION_LABELS = { outdoor:'Outdoor', indoor:'Indoor', auto:'Auto', stadt
 // ── Gradient Header ─────────────────────────────────────────
 function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
   return (
-    <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
-      <div className="flex items-center justify-between max-w-2xl mx-auto">
-        <div className="flex items-center gap-2.5">
-          <MalaraLogo height={26} variant="white" />
-          <span className="text-xs text-white/60 font-medium">KW {week}</span>
+    <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-4 sticky top-0 z-10"
+      style={{ paddingTop: 'max(env(safe-area-inset-top), 0.6rem)', paddingBottom: '0.6rem' }}>
+      <div className="flex items-center gap-3 max-w-2xl mx-auto">
+        <MalaraLogo height={28} variant="white" iconOnly />
+        <div className="flex-1 flex gap-1 overflow-x-auto scrollbar-hide">
+          {['Aufträge','Mein Content','Kalender','Statistik'].map(t => (
+            <button key={t} data-tab={t}
+              className={`px-3.5 py-1.5 rounded-full text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${tab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+              {t}
+            </button>
+          ))}
         </div>
-        <div className="flex items-center gap-3">
-          <WeekNav week={week} year={year} onChange={onWeekChange} />
-          <button onClick={onLogout} className="text-xs text-white/70 hover:text-white">Abmelden</button>
-        </div>
-      </div>
-
-      {/* Pill-Tabs */}
-      <div className="max-w-2xl mx-auto mt-4 flex gap-1.5 overflow-x-auto scrollbar-hide pb-0.5">
-        {['Aufträge','Mein Content','Kalender','Statistik'].map(t => (
-          <button key={t} onClick={() => {/* handled by parent */}}
-            data-tab={t}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${tab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
-            {t}
-          </button>
-        ))}
+        <button onClick={onLogout} className="text-xs text-white/70 hover:text-white flex-shrink-0">Abmelden</button>
       </div>
     </div>
   )
@@ -3125,27 +3117,19 @@ export default function CreatorDashboard() {
   return (
     <div className="min-h-screen lg:h-screen lg:flex lg:flex-col bg-gray-50">
       {/* Header — gradient, sticky, full width */}
-      <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 lg:flex-shrink-0 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
-        <div className="flex items-center justify-between lg:max-w-none lg:px-2">
-          <div className="flex items-center gap-2.5">
-            <MalaraLogo height={26} variant="white" />
-            <span className="text-xs text-white/60 font-medium lg:hidden">KW {week}</span>
+      <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-5 lg:flex-shrink-0 sticky top-0 z-10"
+        style={{ paddingTop: 'max(env(safe-area-inset-top), 0.75rem)', paddingBottom: '0.75rem' }}>
+        <div className="flex items-center gap-4">
+          <MalaraLogo height={32} variant="white" />
+          <div className="flex-1 flex gap-1.5 overflow-x-auto scrollbar-hide">
+            {['Aufträge','Mein Content','Kalender','Profil','Statistik'].map(t => (
+              <button key={t} onClick={() => setActiveTab(t)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+                {t}
+              </button>
+            ))}
           </div>
-          <div className="flex items-center gap-3">
-            <div className="lg:hidden">
-              <WeekNav week={week} year={year} onChange={(w,y) => { setWeek(w); setYear(y) }} />
-            </div>
-            <button onClick={handleLogout} className="text-xs text-white/70 hover:text-white">Abmelden</button>
-          </div>
-        </div>
-        {/* Pill-Tabs */}
-        <div className="mt-4 flex gap-1.5 pb-1 overflow-x-auto scrollbar-hide">
-          {['Aufträge','Mein Content','Kalender','Profil','Statistik'].map(t => (
-            <button key={t} onClick={() => setActiveTab(t)}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
-              {t}
-            </button>
-          ))}
+          <button onClick={handleLogout} className="text-sm text-white/70 hover:text-white flex-shrink-0">Abmelden</button>
         </div>
       </div>
 
