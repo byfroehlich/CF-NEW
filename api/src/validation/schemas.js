@@ -97,6 +97,8 @@ export const jobStatusSchema = z.object({
   note: z.string().optional(),
 })
 
+const PLAN_STATUSES = ['idea','planned','filming','editing','done']
+
 export const contentPlanSchema = z.object({
   week_number: z.number().int().min(1).max(53),
   year: z.number().int().min(2024),
@@ -104,17 +106,19 @@ export const contentPlanSchema = z.object({
   title: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   source_link: z.string().optional().nullable(),
-  status: z.enum(['idea','planned','filming','done']).default('idea'),
+  status: z.enum(PLAN_STATUSES).default('idea'),
   visible_to_agency: z.boolean().default(false),
   partner_type: z.enum(['solo','partner']).default('solo'),
   carried_over_from: z.string().uuid().optional().nullable(),
+  posting_day: z.number().int().min(1).max(7).optional().nullable(),
+  posting_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
 })
 
 export const contentPlanUpdateSchema = z.object({
   title: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   source_link: z.string().optional().nullable(),
-  status: z.enum(['idea','planned','filming','done']).optional(),
+  status: z.enum(PLAN_STATUSES).optional(),
   visible_to_agency: z.boolean().optional(),
   platform: z.enum(['IG','TK','OF','FL','ML','OTHER']).optional(),
   partner_type: z.enum(['solo','partner']).optional(),
@@ -122,4 +126,7 @@ export const contentPlanUpdateSchema = z.object({
   year: z.number().int().min(2024).optional(),
   pushed_to_week: z.number().int().optional().nullable(),
   pushed_to_year: z.number().int().optional().nullable(),
+  posting_day: z.number().int().min(1).max(7).optional().nullable(),
+  posting_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional().nullable(),
+  creator_id: z.string().uuid().optional().nullable(),
 })

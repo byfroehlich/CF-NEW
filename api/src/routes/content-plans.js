@@ -167,10 +167,10 @@ router.post('/', requireAnyRole, validate(contentPlanSchema), async (req, res) =
       return res.status(400).json({ error: 'Kein Creator-Account verknüpft' })
     }
 
-    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from } = req.body
+    const { week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, posting_day, posting_time } = req.body
     const [plan] = await sql`
-      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from)
-      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null})
+      INSERT INTO content_plans (creator_id, agency_id, week_number, year, platform, title, description, source_link, status, visible_to_agency, partner_type, carried_over_from, posting_day, posting_time)
+      VALUES (${creatorId}, ${agencyId}, ${week_number}, ${year}, ${platform}, ${title || null}, ${description || null}, ${source_link || null}, ${status}, ${visible_to_agency}, ${partner_type}, ${carried_over_from || null}, ${posting_day || null}, ${posting_time || null})
       RETURNING *
     `
     res.status(201).json(plan)
@@ -186,7 +186,7 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
     const f = req.body
     const id = req.params.id
 
-    // Creator: nur eigene; Agency/Admin: nur eigene Agentur
+    // Creator: nur eigene; Agency: nur eigene Agentur; Admin: alle
     const [existing] = req.user.role === 'creator'
       ? await sql`SELECT * FROM content_plans WHERE id = ${id} AND creator_id = ${req.user.creator_id} AND deleted_at IS NULL`
       : req.user.role === 'agency'
@@ -195,8 +195,28 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
 
     if (!existing) return res.status(404).json({ error: 'Plan nicht gefunden' })
 
+    // Plan zwischen Accounts verschieben (Admin: beliebig; Agency: innerhalb eigener Agentur)
+    let targetCreatorId = existing.creator_id
+    let targetAgencyId  = existing.agency_id
+
+    if (f.creator_id && f.creator_id !== existing.creator_id) {
+      if (req.user.role === 'admin') {
+        const [tc] = await sql`SELECT id, agency_id FROM creators WHERE id = ${f.creator_id} AND deleted_at IS NULL`
+        if (!tc) return res.status(400).json({ error: 'Ziel-Creator nicht gefunden' })
+        targetCreatorId = tc.id
+        targetAgencyId  = tc.agency_id
+      } else if (req.user.role === 'agency') {
+        const [tc] = await sql`SELECT id, agency_id FROM creators WHERE id = ${f.creator_id} AND agency_id = ${req.user.agency_id} AND deleted_at IS NULL`
+        if (!tc) return res.status(403).json({ error: 'Kein Zugriff auf diesen Creator' })
+        targetCreatorId = tc.id
+        targetAgencyId  = tc.agency_id
+      }
+    }
+
     const [plan] = await sql`
       UPDATE content_plans SET
+        creator_id        = ${targetCreatorId},
+        agency_id         = ${targetAgencyId},
         title             = COALESCE(${f.title ?? null}, title),
         description       = COALESCE(${f.description ?? null}, description),
         source_link       = COALESCE(${f.source_link ?? null}, source_link),
@@ -206,6 +226,8 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
         partner_type      = COALESCE(${f.partner_type ?? null}, partner_type),
         week_number       = COALESCE(${f.week_number ?? null}, week_number),
         year              = COALESCE(${f.year ?? null}, year),
+        posting_day       = CASE WHEN ${'posting_day' in f}::boolean THEN ${f.posting_day ?? null} ELSE posting_day END,
+        posting_time      = CASE WHEN ${'posting_time' in f}::boolean THEN ${f.posting_time ?? null}::time ELSE posting_time END,
         pushed_to_week    = CASE WHEN ${'pushed_to_week' in f}::boolean THEN ${f.pushed_to_week ?? null} ELSE pushed_to_week END,
         pushed_to_year    = CASE WHEN ${'pushed_to_year' in f}::boolean THEN ${f.pushed_to_year ?? null} ELSE pushed_to_year END
       WHERE id = ${id}
@@ -213,6 +235,7 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
     `
     res.json(plan)
   } catch (err) {
+    console.error('Content plan update error:', err)
     res.status(500).json({ error: 'Serverfehler' })
   }
 })

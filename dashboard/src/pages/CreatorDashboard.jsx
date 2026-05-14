@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, updateMyPhoto } from '../lib/api.js'
-import { clearAuth } from '../lib/auth.js'
+import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getCreators, getMyProfile, getChangeRequests, createChangeRequest, updateMyPhoto } from '../lib/api.js'
+import { clearAuth, getRole } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
 import PlatformIcon from '../components/PlatformIcon.jsx'
@@ -19,8 +19,9 @@ function getCurrentWeek() {
 
 const STATUS_LABELS = { open:'Offen', in_progress:'In Arbeit', delivered:'Geliefert', confirmed:'Bestätigt', carried:'Übertrag' }
 const STATUS_COLORS = { open:'bg-red-100 text-red-700', in_progress:'bg-orange-100 text-orange-700', delivered:'bg-green-100 text-green-700', confirmed:'bg-blue-100 text-blue-700', carried:'bg-yellow-100 text-yellow-700' }
-const PLAN_STATUS = { idea:'Idee', planned:'Geplant', filming:'Am Filmen', done:'Fertig' }
-const PLAN_COLORS = { idea:'bg-gray-100 text-gray-600', planned:'bg-blue-100 text-blue-700', filming:'bg-orange-100 text-orange-700', done:'bg-green-100 text-green-700' }
+const PLAN_STATUS = { idea:'Idee', planned:'Geplant', filming:'Am Filmen', editing:'Geschnitten', done:'Fertig' }
+const PLAN_COLORS = { idea:'bg-gray-100 text-gray-600', planned:'bg-blue-100 text-blue-700', filming:'bg-orange-100 text-orange-700', editing:'bg-purple-100 text-purple-700', done:'bg-green-100 text-green-700' }
+const PLAN_DOT    = { idea:'bg-gray-400', planned:'bg-blue-500', filming:'bg-orange-500', editing:'bg-purple-500', done:'bg-green-500' }
 
 // ── Gradient Header ─────────────────────────────────────────
 function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
@@ -94,12 +95,28 @@ function AuftraegeTab({ week, year }) {
   )
 }
 
-const STATUS_CYCLE_WEEK = ['planned', 'done']  // Wochenplan: nur geplant ↔ fertig
+const STATUS_CYCLE_WEEK = ['planned', 'filming', 'editing', 'done']
 
 function nextWeekOf(week, year) {
   if (week >= 52) return { week: 1, year: year + 1 }
   return { week: week + 1, year }
 }
+
+// ISO-Woche → 7 Datumsobjekte (Mo–So)
+function getWeekDates(week, year) {
+  const jan4 = new Date(Date.UTC(year, 0, 4))
+  const jan4Day = jan4.getUTCDay() || 7
+  const monday = new Date(jan4)
+  monday.setUTCDate(jan4.getUTCDate() - jan4Day + 1 + (week - 1) * 7)
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday)
+    d.setUTCDate(monday.getUTCDate() + i)
+    return d
+  })
+}
+
+const MONTH_SHORT = ['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez']
+const DAY_SHORT   = ['Mo','Di','Mi','Do','Fr','Sa','So']
 
 // ── Video-Embed-Helper ───────────────────────────────────────
 function getEmbedUrl(url) {
@@ -180,7 +197,177 @@ function VideoModal({ url, onClose }) {
   )
 }
 
-// ── Inline-Formular (Neu + Bearbeiten) ──────────────────────
+// ── Edit-Popup ───────────────────────────────────────────────
+function EditPlanModal({ plan, onClose, onSave, isPending }) {
+  const role = getRole()
+  const [f, setF] = useState({
+    platform:         plan.platform,
+    title:            plan.title || '',
+    description:      plan.description || '',
+    source_link:      plan.source_link || '',
+    status:           plan.status,
+    visible_to_agency: plan.visible_to_agency,
+    partner_type:     plan.partner_type || 'solo',
+    posting_day:      plan.posting_day ?? null,
+    posting_time:     plan.posting_time ? plan.posting_time.slice(0, 5) : '',
+    creator_id:       plan.creator_id,
+  })
+
+  const { data: creators = [] } = useQuery({
+    queryKey: ['creators-list'],
+    queryFn:  () => getCreators(),
+    enabled:  role === 'admin' || role === 'agency',
+  })
+
+  function handleSave() {
+    const data = {
+      ...f,
+      title:       f.title       || null,
+      description: f.description || null,
+      source_link: f.source_link || null,
+      posting_time: f.posting_time || null,
+    }
+    onSave(data)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm px-4 pb-safe"
+         onClick={onClose}>
+      <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-lg shadow-2xl overflow-y-auto"
+           style={{ maxHeight: '92dvh' }}
+           onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 sticky top-0 bg-white z-10">
+          <h2 className="text-sm font-bold text-gray-800">Plan bearbeiten</h2>
+          <button onClick={onClose}
+            className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 transition-colors">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Plattform */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">Plattform</label>
+            <div className="flex gap-2 flex-wrap">
+              {['IG','TK','OF','FL','ML'].map(p => (
+                <PlatformIcon key={p} platform={p} size="sm" active={f.platform === p}
+                  onClick={() => setF(x => ({ ...x, platform: p }))} />
+              ))}
+            </div>
+          </div>
+
+          {/* Solo / Partner */}
+          <div className="flex gap-2">
+            {[['solo','👤 Solo'],['partner','👥 Partner']].map(([val, label]) => (
+              <button key={val} type="button" onClick={() => setF(x => ({ ...x, partner_type: val }))}
+                className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${f.partner_type === val ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-600 border-gray-300'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Titel */}
+          <input value={f.title} onChange={e => setF(x => ({ ...x, title: e.target.value }))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            placeholder="Titel…" />
+
+          {/* Beschreibung */}
+          <textarea rows={2} value={f.description} onChange={e => setF(x => ({ ...x, description: e.target.value }))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            placeholder="Beschreibung…" />
+
+          {/* Beispiel-Link */}
+          <input type="url" value={f.source_link} onChange={e => setF(x => ({ ...x, source_link: e.target.value }))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+            placeholder="Beispiel-Link (https://…)" />
+
+          {/* Status */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">Status</label>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(PLAN_STATUS).filter(([k]) => k !== 'idea').map(([val, label]) => (
+                <button key={val} type="button" onClick={() => setF(x => ({ ...x, status: val }))}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${f.status === val ? PLAN_COLORS[val] + ' border-transparent' : 'bg-white text-gray-600 border-gray-300'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Posting-Tag */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">Posting-Tag</label>
+            <div className="flex gap-1">
+              {DAY_SHORT.map((day, i) => (
+                <button key={i} type="button"
+                  onClick={() => setF(x => ({ ...x, posting_day: x.posting_day === i+1 ? null : i+1 }))}
+                  className={`flex-1 py-2 rounded-xl text-xs font-semibold border transition-colors ${f.posting_day === i+1 ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-gray-600 border-gray-200 hover:border-violet-300'}`}>
+                  {day}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Uhrzeit */}
+          <div>
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">Uhrzeit</label>
+            <input type="time" value={f.posting_time}
+              onChange={e => setF(x => ({ ...x, posting_time: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
+          </div>
+
+          {/* Agentur sichtbar */}
+          <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+            <input type="checkbox" checked={f.visible_to_agency}
+              onChange={e => setF(x => ({ ...x, visible_to_agency: e.target.checked }))}
+              className="rounded accent-violet-600" />
+            Für Agentur sichtbar
+          </label>
+
+          {/* Creator-Selector (Admin / Agency) */}
+          {(role === 'admin' || role === 'agency') && creators.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5 block">
+                Account verschieben
+              </label>
+              <select value={f.creator_id || ''}
+                onChange={e => setF(x => ({ ...x, creator_id: e.target.value }))}
+                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
+                {creators.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.artist_name || c.real_name}
+                    {c.artist_name && c.real_name ? ` (${c.real_name})` : ''}
+                  </option>
+                ))}
+              </select>
+              {f.creator_id !== plan.creator_id && (
+                <p className="text-xs text-violet-600 mt-1 font-medium">↑ Plan wird zu diesem Account verschoben</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-gray-100 flex gap-2 sticky bottom-0 bg-white">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 border border-gray-300 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-50">
+            Abbrechen
+          </button>
+          <button onClick={handleSave} disabled={isPending}
+            className="flex-1 py-2.5 bg-violet-600 text-white text-sm font-medium rounded-xl hover:bg-violet-700 disabled:opacity-50">
+            {isPending ? 'Speichern…' : 'Speichern'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Inline-Formular (Neu anlegen) ────────────────────────────
 function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
   const [f, setF] = useState(initial)
   return (
@@ -242,7 +429,7 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
 }
 
 // ── Plan-Karte (wiederverwendet in Wochenplan + Ideen) ───────
-function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, showWeekBadge, isIdeaTab }) {
+function PlanCard({ p, idx, week, year, onEdit, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, showWeekBadge, isIdeaTab }) {
   const nxt = nextWeekOf(week, year)
   const [confirmDel, setConfirmDel] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -265,15 +452,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
         </div>
       )}
 
-      {editId === p.id ? (
-        <PlanForm
-          initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo' }}
-          onSave={f => updateMut.mutate({ id: p.id, ...f })}
-          onCancel={() => setEditId(null)}
-          isPending={updateMut.isPending}
-        />
-      ) : (
-        <>
+      <>
           {/* ── Main row ───────────────────────────────── */}
           <div className="flex items-start gap-3">
 
@@ -376,7 +555,7 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
 
             <div className="flex items-center gap-1">
               {/* Edit */}
-              <button onClick={() => setEditId(p.id)} disabled={busy}
+              <button onClick={() => onEdit(p)} disabled={busy}
                 className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 transition-colors"
                 title="Bearbeiten">
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -410,7 +589,6 @@ function PlanCard({ p, idx, week, year, editId, setEditId, updateMut, deleteMut,
             </div>
           </div>
         </>
-      )}
     </div>
   )
 }
@@ -422,7 +600,7 @@ function MeinContentTab({ week, year }) {
   const [platform, setPlatform]     = useState('Alle')
   const [partnerFilter, setPartnerFilter] = useState('Alle')
   const [showNew, setShowNew]       = useState(false)
-  const [editId, setEditId]         = useState(null)
+  const [editPlan, setEditPlan]     = useState(null)   // Plan-Objekt das bearbeitet wird
   const [statusFilter, setStatusFilter] = useState('Alle')
 
   const EMPTY_WEEK = { platform: 'IG', title: '', description: '', source_link: '', status: 'planned', visible_to_agency: false, partner_type: 'solo' }
@@ -442,9 +620,11 @@ function MeinContentTab({ week, year }) {
 
   const applyPartner = list => partnerFilter === 'Alle' ? list : list.filter(p => p.partner_type === partnerFilter.toLowerCase())
   const applyStatus  = list => {
-    if (statusFilter === 'geplant')   return list.filter(p => p.status !== 'done' && !p.pushed_to_week)
-    if (statusFilter === 'fertig')    return list.filter(p => p.status === 'done')
-    if (statusFilter === 'geschoben') return list.filter(p => !!p.pushed_to_week)
+    if (statusFilter === 'planned')  return list.filter(p => p.status === 'planned')
+    if (statusFilter === 'filming')  return list.filter(p => p.status === 'filming')
+    if (statusFilter === 'editing')  return list.filter(p => p.status === 'editing')
+    if (statusFilter === 'done')     return list.filter(p => p.status === 'done')
+    if (statusFilter === 'pushed')   return list.filter(p => !!p.pushed_to_week)
     return list
   }
 
@@ -468,7 +648,7 @@ function MeinContentTab({ week, year }) {
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
-    onSuccess: () => { invAll(); setEditId(null) },
+    onSuccess: () => { invAll(); setEditPlan(null) },
     onError: e => alert('Fehler beim Speichern: ' + (e.response?.data?.error || e.message))
   })
 
@@ -510,7 +690,7 @@ function MeinContentTab({ week, year }) {
     || (undoPushMut.isPending && undoPushMut.variables?.id)
 
   const gesamt   = weekPlans.length
-  const offen    = weekPlans.filter(p => p.status === 'planned').length
+  const offen    = weekPlans.filter(p => ['planned','filming','editing'].includes(p.status)).length
   const erledigt = weekPlans.filter(p => p.status === 'done').length
 
   return (
@@ -525,7 +705,7 @@ function MeinContentTab({ week, year }) {
       {/* Unterreiter */}
       <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
         {[['woche',`📅 KW${week}`],['ideen','💡 Ideenspeicher']].map(([val, label]) => (
-          <button key={val} onClick={() => { setSubTab(val); setShowNew(false); setEditId(null); setStatusFilter('Alle') }}
+          <button key={val} onClick={() => { setSubTab(val); setShowNew(false); setEditPlan(null); setStatusFilter('Alle') }}
             className={`flex-1 py-2 rounded-lg text-xs font-semibold transition-all ${subTab === val ? 'bg-white text-indigo-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
             {label}
           </button>
@@ -545,7 +725,7 @@ function MeinContentTab({ week, year }) {
           {subTab === 'woche' && (
             <>
               <span className="w-px h-3.5 bg-gray-200 flex-shrink-0" />
-              {[['Alle','Alle'],['geplant','Geplant'],['fertig','Fertig'],['geschoben','Geschoben']].map(([val, label]) => (
+              {[['Alle','Alle'],['planned','Geplant'],['filming','Gefilmt'],['editing','Geschnitten'],['done','Fertig'],['pushed','Verschoben']].map(([val, label]) => (
                 <button key={`s-${val}`} onClick={() => setStatusFilter(val)}
                   className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
                   {label}
@@ -605,7 +785,7 @@ function MeinContentTab({ week, year }) {
               key={p.id}
               p={p} idx={idx}
               week={week} year={year}
-              editId={editId} setEditId={setEditId}
+              onEdit={p => setEditPlan(p)}
               updateMut={updateMut} deleteMut={deleteMut} pushMut={pushMut} undoPushMut={undoPushMut}
               allPlans={allRaw}
               busyId={busyId}
@@ -614,6 +794,190 @@ function MeinContentTab({ week, year }) {
             />
           ))}
         </div>
+      )}
+
+      {/* Edit-Modal */}
+      {editPlan && (
+        <EditPlanModal
+          plan={editPlan}
+          onClose={() => setEditPlan(null)}
+          onSave={f => updateMut.mutate({ id: editPlan.id, ...f })}
+          isPending={updateMut.isPending}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Kalender Tab ─────────────────────────────────────────────
+function KalenderTab({ week, year }) {
+  const qc = useQueryClient()
+  const [editPlan, setEditPlan] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+
+  const { data: allPlans = [], isLoading } = useQuery({
+    queryKey: ['plans-calendar', week, year],
+    queryFn:  () => getContentPlans({ week, year }),
+  })
+
+  const plans = allPlans.filter(p => p.status !== 'idea' && !p.deleted_at)
+  const weekDates = getWeekDates(week, year)
+
+  // Pläne nach Tag gruppieren
+  const byDay = Object.fromEntries(Array.from({ length: 7 }, (_, i) => [i + 1, []]))
+  const unscheduled = []
+  for (const p of plans) {
+    if (p.posting_day >= 1 && p.posting_day <= 7) byDay[p.posting_day].push(p)
+    else unscheduled.push(p)
+  }
+  // Innerhalb jedes Tages nach Uhrzeit sortieren
+  for (let d = 1; d <= 7; d++) {
+    byDay[d].sort((a, b) => (a.posting_time || '99:99') > (b.posting_time || '99:99') ? 1 : -1)
+  }
+
+  const today = new Date()
+  const isToday = (date) =>
+    date.getUTCFullYear() === today.getFullYear() &&
+    date.getUTCMonth()    === today.getMonth() &&
+    date.getUTCDate()     === today.getDate()
+
+  const invAll = () => qc.invalidateQueries({ queryKey: ['plans-calendar', week, year] })
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
+    onSuccess: () => { invAll(); setEditPlan(null) },
+    onError: e => alert('Fehler: ' + (e.response?.data?.error || e.message))
+  })
+
+  const selected = plans.find(p => p.id === selectedId)
+
+  if (isLoading) return <p className="text-center text-gray-400 text-sm py-12">Lädt…</p>
+
+  return (
+    <div className="space-y-4">
+      {/* Datum-Leiste */}
+      <div className="text-center text-xs text-gray-500 font-medium">
+        {weekDates[0].getUTCDate()}. {MONTH_SHORT[weekDates[0].getUTCMonth()]} – {weekDates[6].getUTCDate()}. {MONTH_SHORT[weekDates[6].getUTCMonth()]}
+      </div>
+
+      {/* Kalender + Sidebar */}
+      <div className="flex gap-3">
+
+        {/* 7-Spalten-Raster */}
+        <div className="flex-1 overflow-x-auto">
+          <div className="grid grid-cols-7 gap-1.5 min-w-[420px]">
+            {weekDates.map((date, i) => {
+              const dayPlans = byDay[i + 1] || []
+              const today_ = isToday(date)
+              return (
+                <div key={i} className={`rounded-xl border transition-all ${today_ ? 'bg-violet-600 border-violet-700' : 'bg-gray-50 border-gray-200'}`}>
+                  {/* Tag-Header */}
+                  <div className={`text-center px-1 pt-2 pb-1.5 ${today_ ? 'text-white' : 'text-gray-700'}`}>
+                    <div className="text-[10px] font-semibold uppercase tracking-wide opacity-70">{DAY_SHORT[i]}</div>
+                    <div className="text-xl font-bold leading-tight">{date.getUTCDate()}</div>
+                    <div className="text-[10px] opacity-60">{MONTH_SHORT[date.getUTCMonth()]}</div>
+                  </div>
+
+                  {/* Plan-Karten */}
+                  <div className="px-1 pb-2 space-y-1 min-h-[60px]">
+                    {dayPlans.map(p => (
+                      <button key={p.id}
+                        onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+                        className={`w-full text-left rounded-lg p-1.5 transition-all border ${selectedId === p.id ? 'bg-violet-50 border-violet-300 shadow-sm' : 'bg-white border-gray-100 hover:border-violet-200'}`}>
+                        {/* Uhrzeit groß */}
+                        {p.posting_time && (
+                          <div className="text-sm font-bold text-violet-600 leading-none mb-1">
+                            {p.posting_time.slice(0, 5)}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1">
+                          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PLAN_DOT[p.status] || 'bg-gray-400'}`} />
+                          <PlatformIcon platform={p.platform} size="badge" />
+                        </div>
+                        {p.title && (
+                          <p className="text-[10px] text-gray-600 mt-0.5 truncate leading-snug">{p.title}</p>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Sidebar */}
+        <div className="w-44 flex-shrink-0">
+          {selected ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-3 space-y-2">
+              <div className="flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${PLAN_DOT[selected.status] || 'bg-gray-400'}`} />
+                <PlatformIcon platform={selected.platform} size="badge" />
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${PLAN_COLORS[selected.status] || 'bg-gray-100 text-gray-600'}`}>
+                  {PLAN_STATUS[selected.status] || selected.status}
+                </span>
+              </div>
+              {selected.posting_time && (
+                <div className="text-2xl font-bold text-violet-600 tracking-tight">
+                  {selected.posting_time.slice(0, 5)}
+                </div>
+              )}
+              {selected.title && (
+                <p className="text-sm font-semibold text-gray-800">{selected.title}</p>
+              )}
+              {selected.description && (
+                <p className="text-xs text-gray-500 whitespace-pre-wrap">{selected.description}</p>
+              )}
+              <button onClick={() => setEditPlan(selected)}
+                className="w-full py-2 bg-violet-600 text-white text-xs font-medium rounded-lg hover:bg-violet-700 transition-colors">
+                Bearbeiten
+              </button>
+            </div>
+          ) : (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-center space-y-2">
+              <svg className="w-8 h-8 text-gray-300 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <p className="text-xs font-medium text-gray-500">Plan auswählen</p>
+              <p className="text-[10px] text-gray-400">Klicke auf einen Plan im Kalender</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Nicht eingeplant */}
+      <div className="border-2 border-dashed border-gray-200 rounded-xl p-3">
+        <div className="flex items-center gap-1.5 text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
+          <span className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+          Nicht eingeplant
+        </div>
+        {unscheduled.length === 0 ? (
+          <p className="text-xs text-gray-400 text-center py-1">
+            Alle Pläne haben einen Posting-Termin — Karte hierhin ziehen zum Entterminieren
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {unscheduled.map(p => (
+              <button key={p.id}
+                onClick={() => setSelectedId(p.id === selectedId ? null : p.id)}
+                className={`flex items-center gap-1.5 bg-white border rounded-lg px-2 py-1.5 text-xs transition-all ${selectedId === p.id ? 'border-violet-300 bg-violet-50' : 'border-gray-200 hover:border-violet-200'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PLAN_DOT[p.status] || 'bg-gray-400'}`} />
+                <PlatformIcon platform={p.platform} size="badge" />
+                <span className="text-gray-700 max-w-[80px] truncate">{p.title || 'Ohne Titel'}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Edit-Modal */}
+      {editPlan && (
+        <EditPlanModal
+          plan={editPlan}
+          onClose={() => setEditPlan(null)}
+          onSave={f => updateMut.mutate({ id: editPlan.id, ...f })}
+          isPending={updateMut.isPending}
+        />
       )}
     </div>
   )
@@ -1076,22 +1440,28 @@ export default function CreatorDashboard() {
           </div>
         </div>
         {/* Pill-Tabs */}
-        <div className="max-w-2xl mx-auto mt-4 flex gap-2">
-          {['Aufträge','Mein Content','Profil','Statistik'].map(t => (
+        <div className="max-w-2xl mx-auto mt-4 flex gap-1.5 overflow-x-auto pb-0.5">
+          {['Aufträge','Mein Content','Kalender','Profil','Statistik'].map(t => (
             <button key={t} onClick={() => setActiveTab(t)}
-              className={`px-5 py-2 rounded-full text-sm font-medium transition-colors ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap flex-shrink-0 ${activeTab===t ? 'bg-white text-violet-700' : 'text-white/80 hover:text-white'}`}>
               {t}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="max-w-2xl mx-auto px-6 py-6">
-        {activeTab === 'Aufträge'    && <AuftraegeTab week={week} year={year} />}
-        {activeTab === 'Mein Content' && <MeinContentTab week={week} year={year} />}
-        {activeTab === 'Profil'      && <ProfilTab />}
-        {activeTab === 'Statistik'   && <StatistikTab week={week} year={year} />}
-      </div>
+      {activeTab === 'Kalender' ? (
+        <div className="px-4 py-5">
+          <KalenderTab week={week} year={year} />
+        </div>
+      ) : (
+        <div className="max-w-2xl mx-auto px-6 py-6">
+          {activeTab === 'Aufträge'     && <AuftraegeTab week={week} year={year} />}
+          {activeTab === 'Mein Content' && <MeinContentTab week={week} year={year} />}
+          {activeTab === 'Profil'       && <ProfilTab />}
+          {activeTab === 'Statistik'    && <StatistikTab week={week} year={year} />}
+        </div>
+      )}
     </div>
   )
 }
