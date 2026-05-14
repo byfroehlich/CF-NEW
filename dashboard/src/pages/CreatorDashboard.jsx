@@ -644,7 +644,7 @@ function VideoModal({ url, onClose }) {
 }
 
 // ── Inline-Formular (Neu + Bearbeiten) ──────────────────────
-function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
+function PlanForm({ initial, onSave, onCancel, isPending, hideStatus, accounts = [] }) {
   const [f, setF] = useState(initial)
   return (
     <div className="space-y-3">
@@ -743,6 +743,23 @@ function PlanForm({ initial, onSave, onCancel, isPending, hideStatus }) {
           </div>
         </div>
       </div>
+      {/* Account verschieben (nur wenn mehrere Accounts existieren) */}
+      {accounts.length > 1 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1.5">Account</p>
+          <select value={f.account_id || ''}
+            onChange={e => setF(x => ({ ...x, account_id: e.target.value || null }))}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
+            <option value="">Kein Account</option>
+            {accounts.map(a => (
+              <option key={a.id} value={a.id}>{a.name}</option>
+            ))}
+          </select>
+          {f.account_id !== initial.account_id && (
+            <p className="text-xs text-violet-600 mt-1 font-medium">↑ Plan wird zu diesem Account verschoben</p>
+          )}
+        </div>
+      )}
       <div className="flex gap-2">
         <button onClick={onCancel} className="flex-1 py-2 border border-gray-300 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-50">Abbrechen</button>
         <button onClick={() => onSave({ ...f, source_link: f.source_link || null })} disabled={isPending}
@@ -1023,7 +1040,7 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, account
 }
 
 // ── Plan Detail Content (shared between modal and desktop panel) ─
-function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab, isTopTab, onPushRequest, onClose }) {
+function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab, isTopTab, onPushRequest, onClose, accounts = [] }) {
   const [editing, setEditing] = useState(false)
   const [confirmDel, setConfirmDel] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
@@ -1047,10 +1064,11 @@ function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoP
       <div className="px-5 py-5 space-y-4 overflow-y-auto flex-1">
         {editing ? (
           <PlanForm
-            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date ? String(p.post_date).slice(0,10) : null, post_time: p.post_time ? p.post_time.slice(0, 5) : null }}
+            initial={{ platform: p.platform, title: p.title || '', description: p.description || '', source_link: p.source_link || '', status: p.status, visible_to_agency: p.visible_to_agency, partner_type: p.partner_type || 'solo', requisiten: p.requisiten || '', kleidung: p.kleidung || '', location_tags: p.location_tags || [], post_date: p.post_date ? String(p.post_date).slice(0,10) : null, post_time: p.post_time ? p.post_time.slice(0, 5) : null, account_id: p.account_id || null }}
             onSave={f => { updateMut.mutate({ id: p.id, ...f }); setEditing(false) }}
             onCancel={() => setEditing(false)}
             isPending={updateMut.isPending}
+            accounts={accounts}
           />
         ) : (
           <>
@@ -1175,7 +1193,7 @@ function PlanDetailContent({ p, week, year, updateMut, deleteMut, pushMut, undoP
 }
 
 // ── Plan Detail Modal ────────────────────────────────────────
-function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab, isTopTab, onPushRequest }) {
+function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut, undoPushMut, allPlans, busyId, isIdeaTab, isTopTab, onPushRequest, accounts = [] }) {
   return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
          onClick={onClose}>
@@ -1191,6 +1209,7 @@ function PlanDetailModal({ p, week, year, onClose, updateMut, deleteMut, pushMut
           isTopTab={isTopTab}
           onPushRequest={onPushRequest}
           onClose={onClose}
+          accounts={accounts}
         />
       </div>
     </div>,
@@ -1954,6 +1973,7 @@ function MeinContentTab({ week, year, onWeekChange }) {
             isTopTab={subTab === 'top'}
             onPushRequest={handlePushRequest}
             onClose={() => setDetailPlan(null)}
+            accounts={accounts}
           />
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
@@ -2101,6 +2121,7 @@ function MeinContentTab({ week, year, onWeekChange }) {
           isIdeaTab={subTab !== 'woche'}
           isTopTab={subTab === 'top'}
           onPushRequest={handlePushRequest}
+          accounts={accounts}
         />
       )}
 

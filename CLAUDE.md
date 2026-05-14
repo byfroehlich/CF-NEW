@@ -1,6 +1,16 @@
-# CreatorFlow — Projektdokumentation
+# Malara (ehem. CreatorFlow) — Projektdokumentation
 
 > **WICHTIG:** Alle Architektur-Entscheidungen, Schema-Änderungen, neue Endpoints, neue Komponenten und Rollenrechte müssen hier dokumentiert werden bevor oder unmittelbar nachdem sie implementiert werden. Dieses Dokument ist die einzige Quelle der Wahrheit.
+
+## Git & Deployment
+
+**Render-Deploy-Branch:** `claude/review-project-images-5cdbf`  
+Render deployt automatisch von diesem Branch (nicht von `main`). Alle Änderungen müssen auf diesen Branch gepusht werden.
+
+**Arbeitsablauf:**
+1. Entwicklung in Claude-Sessions: neuer Feature-Branch basierend auf Render-Branch
+2. Nach Fertigstellung: Branch in `claude/review-project-images-5cdbf` mergen/pushen
+3. Render deployt automatisch nach Push auf den Deploy-Branch
 
 ---
 

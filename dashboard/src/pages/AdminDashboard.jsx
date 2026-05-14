@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { logout, getJobs, getJobSummary, getCreators, getAgencies, createCreator, updateCreator, createAgency, updateAgency, getLogs, getLogSummary, getCreatorPhotos, uploadFile, addCreatorPhoto, deleteCreatorPhoto, activateCreator, rejectCreator, getSystemSettings, updateSystemSetting } from '../lib/api.js'
+import MalaraLogo from '../components/MalaraLogo.jsx'
 import { clearAuth } from '../lib/auth.js'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
@@ -23,16 +24,12 @@ const TABS = ['Aufträge', 'Creator', 'Agentur', 'Statistik', 'Nutzer', 'System'
 // ── Logo Header ──────────────────────────────────────────────
 function AdminHeader({ tab, week, year, onWeekChange, onLogout }) {
   return (
-    <div className="bg-gray-900 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
+    <div className="bg-gradient-to-r from-violet-950 to-fuchsia-950 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
       <div className="flex items-center justify-between max-w-6xl mx-auto">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-xs">CF</span>
-          </div>
-          <div>
-            <div className="font-bold text-base leading-none">CreatorFlow</div>
-            <div className="text-xs text-gray-400 mt-0.5">ADMIN · Agentur-Übersicht</div>
-          </div>
+          <MalaraLogo height={28} variant="white" />
+          <div className="w-px h-5 bg-white/20" />
+          <span className="text-xs font-semibold text-white/60 uppercase tracking-wider">Admin</span>
         </div>
         <div className="flex items-center gap-4">
           {['Aufträge','Statistik'].includes(tab) && (

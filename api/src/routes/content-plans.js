@@ -206,8 +206,27 @@ router.patch('/:id', requireAnyRole, validate(contentPlanUpdateSchema), async (r
 
     if (!existing) return res.status(404).json({ error: 'Plan nicht gefunden' })
 
+    // Plan zwischen Creator-Accounts verschieben
+    let targetCreatorId = existing.creator_id
+    let targetAgencyId  = existing.agency_id
+
+    if (f.creator_id && f.creator_id !== existing.creator_id) {
+      if (req.user.role === 'admin') {
+        const [tc] = await sql`SELECT id, agency_id FROM creators WHERE id = ${f.creator_id} AND deleted_at IS NULL`
+        if (!tc) return res.status(400).json({ error: 'Ziel-Creator nicht gefunden' })
+        targetCreatorId = tc.id; targetAgencyId = tc.agency_id
+      } else {
+        // Agency und Creator: nur innerhalb derselben Agentur
+        const [tc] = await sql`SELECT id, agency_id FROM creators WHERE id = ${f.creator_id} AND agency_id = ${req.user.agency_id} AND deleted_at IS NULL`
+        if (!tc) return res.status(403).json({ error: 'Kein Zugriff auf diesen Creator' })
+        targetCreatorId = tc.id; targetAgencyId = tc.agency_id
+      }
+    }
+
     const [plan] = await sql`
       UPDATE content_plans SET
+        creator_id        = ${targetCreatorId},
+        agency_id         = ${targetAgencyId},
         title             = COALESCE(${f.title ?? null}, title),
         description       = COALESCE(${f.description ?? null}, description),
         source_link       = COALESCE(${f.source_link ?? null}, source_link),

@@ -142,4 +142,5 @@ export const contentPlanUpdateSchema = z.object({
   post_date: z.string().optional().nullable(),
   post_time: z.string().optional().nullable(),
   posted_at: z.string().datetime().optional().nullable(),
+  creator_id: z.string().uuid().optional().nullable(),
 })
