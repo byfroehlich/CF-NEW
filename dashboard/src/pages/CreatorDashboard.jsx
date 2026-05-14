@@ -3139,9 +3139,11 @@ export default function CreatorDashboard() {
         {activeTab === 'Aufträge'     && <AuftraegeTab   week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
         {activeTab === 'Kalender'     && <KalenderTab    week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
         {(activeTab === 'Profil' || activeTab === 'Statistik') && (
-          <div className="max-w-3xl mx-auto px-6 py-6">
-            {activeTab === 'Profil'    && <ProfilTab />}
-            {activeTab === 'Statistik' && <StatistikTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
+          <div className="lg:overflow-y-auto lg:h-full">
+            <div className="max-w-3xl mx-auto px-6 py-6">
+              {activeTab === 'Profil'    && <ProfilTab />}
+              {activeTab === 'Statistik' && <StatistikTab week={week} year={year} onWeekChange={(w,y) => { setWeek(w); setYear(y) }} />}
+            </div>
           </div>
         )}
       </div>
