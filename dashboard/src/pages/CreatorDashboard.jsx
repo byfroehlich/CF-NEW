@@ -148,6 +148,7 @@ function AuftraegeTab({ week, year, onWeekChange }) {
   const [platform, setPlatform]         = useState('Alle')
   const [partnerFilter, setPartnerFilter] = useState('Alle')
   const [locationFilter, setLocationFilter] = useState([])
+  const [statusJobFilter, setStatusJobFilter] = useState('Alle')
   const [showFilterSheet, setShowFilterSheet] = useState(false)
   const [detailItem, setDetailItem]     = useState(null)
 
@@ -187,10 +188,11 @@ function AuftraegeTab({ week, year, onWeekChange }) {
     let out = list
     if (partnerFilter !== 'Alle') out = out.filter(i => (i.partner_type || 'solo') === partnerFilter.toLowerCase())
     if (locationFilter.length > 0) out = out.filter(i => locationFilter.every(t => (i.location_tags || []).includes(t)))
+    if (statusJobFilter !== 'Alle') out = out.filter(i => i._type === 'plan' || i.status === statusJobFilter)
     return out
   }
 
-  const activeFilterCount = (partnerFilter !== 'Alle' ? 1 : 0) + (locationFilter.length > 0 ? 1 : 0)
+  const activeFilterCount = (partnerFilter !== 'Alle' ? 1 : 0) + (locationFilter.length > 0 ? 1 : 0) + (statusJobFilter !== 'Alle' ? 1 : 0)
 
   const isLoading = subTab === 'jobs' ? jobsLoading : combinedLoading
   const rawList   = subTab === 'jobs' ? jobs : combined
@@ -208,9 +210,22 @@ function AuftraegeTab({ week, year, onWeekChange }) {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <p className="text-base font-bold text-gray-900 lg:text-sm">Filter</p>
-        <button onClick={() => { setPartnerFilter('Alle'); setLocationFilter([]) }}
+        <button onClick={() => { setPartnerFilter('Alle'); setLocationFilter([]); setStatusJobFilter('Alle') }}
           className="text-xs text-red-400 hover:text-red-600 font-medium">Zurücksetzen</button>
       </div>
+      {subTab === 'jobs' && (
+        <div>
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Status</p>
+          <div className="space-y-0.5">
+            {[['Alle','Alle'],['open','Offen'],['in_progress','In Arbeit'],['delivered','Geliefert'],['confirmed','Bestätigt'],['carried','Übertrag']].map(([val,lbl]) => (
+              <button key={val} onClick={() => setStatusJobFilter(val)}
+                className={`w-full text-left px-3 py-2 lg:py-1.5 rounded-xl text-sm lg:text-xs transition-colors ${statusJobFilter === val ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div>
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Art</p>
         <div className="flex gap-2">
@@ -1013,6 +1028,7 @@ function PlanListRow({ p, isIdeaTab, isTopTab, busy, updateMut, onClick, account
         <span className={`flex-1 text-sm truncate ${p.posted_at ? 'line-through text-gray-400' : 'text-gray-800'}`}>
           {p.title || p.description || <span className="text-gray-300 italic text-xs">Kein Titel</span>}
         </span>
+        {p.post_time && <span className="text-xs text-violet-500 font-semibold flex-shrink-0">{p.post_time.slice(0,5)}</span>}
         {postOverdue && <span className="text-red-400 flex-shrink-0 text-xs">⚠</span>}
         {p.post_date && !postOverdue && !p.posted_at && <span className="text-xs text-indigo-400 flex-shrink-0">📅</span>}
         {p.post_date && p.posted_at && <span className="text-xs text-green-500 flex-shrink-0 font-semibold">✓</span>}
@@ -1359,10 +1375,9 @@ function MeinContentTab({ week, year, onWeekChange }) {
 
   const applyPartner   = list => partnerFilter === 'Alle' ? list : list.filter(p => p.partner_type === partnerFilter.toLowerCase())
   const applyStatus    = list => {
-    if (statusFilter === 'geplant')   return list.filter(p => p.status !== 'done' && !p.pushed_to_week)
-    if (statusFilter === 'fertig')    return list.filter(p => p.status === 'done')
+    if (statusFilter === 'Alle') return list
     if (statusFilter === 'geschoben') return list.filter(p => !!p.pushed_to_week)
-    return list
+    return list.filter(p => p.status === statusFilter)
   }
   const applyAccountFilter  = list => accountFilter ? list.filter(p => p.account_id === accountFilter) : list
   const applyLocationFilter = list => locationFilter.length === 0 ? list : list.filter(p => locationFilter.every(t => (p.location_tags || []).includes(t)))
@@ -1662,7 +1677,7 @@ function MeinContentTab({ week, year, onWeekChange }) {
             <div>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Status</p>
               <div className="space-y-0.5">
-                {[['Alle','Alle'],['geplant','Geplant'],['fertig','✓ Fertig'],['geschoben','→ Geschoben']].map(([val,lbl]) => (
+                {[['Alle','Alle'],['planned','Geplant'],['filming','Gefilmt'],['geschnitten','Geschnitten'],['done','✓ Fertig'],['geschoben','→ Geschoben']].map(([val,lbl]) => (
                   <button key={val} onClick={() => setStatusFilter(val)}
                     className={`w-full text-left px-3 py-2 rounded-xl text-sm transition-colors ${statusFilter === val ? 'bg-violet-600 text-white' : 'text-gray-600 hover:bg-gray-50'}`}>
                     {lbl}
@@ -2020,9 +2035,9 @@ function MeinContentTab({ week, year, onWeekChange }) {
                 <div>
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Status</p>
                   <div className="flex gap-2">
-                    {[['Alle','Alle'],['fertig','✓ Fertig'],['geschoben','→ Geschoben']].map(([val, lbl]) => (
+                    {[['Alle','Alle'],['planned','Geplant'],['filming','Gefilmt'],['geschnitten','Geschnitten'],['done','✓ Fertig'],['geschoben','→ Geschoben']].map(([val, lbl]) => (
                       <button key={val} onClick={() => setStatusFilter(val)}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-medium border transition-colors ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
+                        className={`flex-1 py-2 rounded-xl text-xs font-medium border transition-colors ${statusFilter === val ? 'bg-violet-600 text-white border-violet-600' : 'bg-gray-50 border-gray-200 text-gray-600'}`}>
                         {lbl}
                       </button>
                     ))}
@@ -2164,6 +2179,7 @@ function KalenderTab({ week, year, onWeekChange }) {
     queryKey: ['plans-calendar', year],
     queryFn: () => getContentPlans({ year })
   })
+  const { data: accounts = [] } = useQuery({ queryKey: ['creator-accounts'], queryFn: getCreatorAccounts })
 
   const updateMut = useMutation({
     mutationFn: ({ id, ...data }) => updateContentPlan(id, data),
@@ -2234,9 +2250,14 @@ function KalenderTab({ week, year, onWeekChange }) {
         <div className="flex items-center gap-1 mb-0.5">
           <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(p.status)}`} />
           <PlatformIcon platform={p.platform} size="badge" />
-          {p.post_time && <span className="text-[10px] text-gray-400 ml-auto flex-shrink-0">{p.post_time.slice(0,5)}</span>}
-          {p.posted_at && <span className="text-[10px] text-green-500 font-bold ml-auto">✓</span>}
+          {p.post_time && <span className="text-[10px] font-semibold text-violet-500 ml-auto flex-shrink-0">{p.post_time.slice(0,5)}</span>}
+          {!p.post_time && p.posted_at && <span className="text-[10px] text-green-500 font-bold ml-auto">✓</span>}
         </div>
+        {accounts.find(a => a.id === p.account_id) && (
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium inline-block mb-0.5">
+            {accounts.find(a => a.id === p.account_id).name}
+          </span>
+        )}
         <p className={`text-xs leading-snug ${p.status === 'done' ? 'line-through text-gray-400' : 'text-gray-700'}`}>
           {p.title || <span className="italic text-gray-300">Kein Titel</span>}
         </p>
@@ -2427,6 +2448,11 @@ function KalenderTab({ week, year, onWeekChange }) {
                         }`}>
                         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(p.status)}`} />
                         <PlatformIcon platform={p.platform} size="badge" />
+                        {accounts.find(a => a.id === p.account_id) && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 font-medium flex-shrink-0">
+                            {accounts.find(a => a.id === p.account_id).name}
+                          </span>
+                        )}
                         <span className="text-xs text-gray-700 max-w-[100px] truncate">{p.title || '(kein Titel)'}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium">KW{p.week_number}</span>
                       </button>
