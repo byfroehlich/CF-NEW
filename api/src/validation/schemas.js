@@ -71,6 +71,7 @@ export const creatorSchema = z.object({
 })
 
 export const creatorUpdateSchema = z.object({
+  agency_id: z.string().uuid().optional().nullable(),
   real_name: z.string().min(1).optional(),
   artist_name: z.string().optional().nullable(),
   photo_url: z.string().optional().nullable(),
@@ -97,6 +98,11 @@ export const jobStatusSchema = z.object({
   note: z.string().optional(),
 })
 
+export const jobMetaSchema = z.object({
+  partner_type:  z.enum(['solo','partner']).optional(),
+  location_tags: z.array(z.enum(['outdoor','indoor','auto','stadt'])).optional(),
+})
+
 export const contentPlanSchema = z.object({
   week_number: z.number().int().min(1).max(53),
   year: z.number().int().min(2024),
@@ -104,22 +110,37 @@ export const contentPlanSchema = z.object({
   title: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   source_link: z.string().optional().nullable(),
-  status: z.enum(['idea','planned','filming','done']).default('idea'),
+  status: z.enum(['idea','planned','filming','geschnitten','done']).default('idea'),
   visible_to_agency: z.boolean().default(false),
   partner_type: z.enum(['solo','partner']).default('solo'),
   carried_over_from: z.string().uuid().optional().nullable(),
+  requisiten: z.string().optional().nullable(),
+  kleidung: z.string().optional().nullable(),
+  account_id: z.string().uuid().optional().nullable(),
+  location_tags: z.array(z.enum(['outdoor','indoor','auto','stadt'])).optional().default([]),
+  post_date: z.string().optional().nullable(),
+  post_time: z.string().optional().nullable(),
 })
 
 export const contentPlanUpdateSchema = z.object({
   title: z.string().optional().nullable(),
   description: z.string().optional().nullable(),
   source_link: z.string().optional().nullable(),
-  status: z.enum(['idea','planned','filming','done']).optional(),
+  status: z.enum(['idea','planned','filming','geschnitten','done']).optional(),
   visible_to_agency: z.boolean().optional(),
   platform: z.enum(['IG','TK','OF','FL','ML','OTHER']).optional(),
   partner_type: z.enum(['solo','partner']).optional(),
-  week_number: z.number().int().min(1).max(53).optional(),
-  year: z.number().int().min(2024).optional(),
+  week_number: z.number().int().min(1).max(53).optional().nullable(),
+  year: z.number().int().min(2024).optional().nullable(),
   pushed_to_week: z.number().int().optional().nullable(),
   pushed_to_year: z.number().int().optional().nullable(),
+  requisiten: z.string().optional().nullable(),
+  kleidung: z.string().optional().nullable(),
+  account_id: z.string().uuid().optional().nullable(),
+  is_top_video: z.boolean().optional(),
+  location_tags: z.array(z.enum(['outdoor','indoor','auto','stadt'])).optional(),
+  post_date: z.string().optional().nullable(),
+  post_time: z.string().optional().nullable(),
+  posted_at: z.string().datetime().optional().nullable(),
+  creator_id: z.string().uuid().optional().nullable(),
 })

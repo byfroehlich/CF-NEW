@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../lib/api.js'
 import { saveAuth, roleHome } from '../lib/auth.js'
+import MalaraLogo from '../components/MalaraLogo.jsx'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -29,11 +30,8 @@ export default function Login() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
-        <div className="flex items-center gap-3 mb-8 justify-center">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center">
-            <span className="text-white font-bold text-sm">CF</span>
-          </div>
-          <span className="text-xl font-bold text-gray-900">CreatorFlow</span>
+        <div className="flex justify-center mb-8">
+          <MalaraLogo height={44} variant="color" />
         </div>
 
         <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">

@@ -1,6 +1,16 @@
-# CreatorFlow — Projektdokumentation
+# Malara (ehem. CreatorFlow) — Projektdokumentation
 
 > **WICHTIG:** Alle Architektur-Entscheidungen, Schema-Änderungen, neue Endpoints, neue Komponenten und Rollenrechte müssen hier dokumentiert werden bevor oder unmittelbar nachdem sie implementiert werden. Dieses Dokument ist die einzige Quelle der Wahrheit.
+
+## Git & Deployment
+
+**Render-Deploy-Branch:** `claude/review-project-images-5cdbf`  
+Render deployt automatisch von diesem Branch (nicht von `main`). Alle Änderungen müssen auf diesen Branch gepusht werden.
+
+**Arbeitsablauf:**
+1. Entwicklung in Claude-Sessions: neuer Feature-Branch basierend auf Render-Branch
+2. Nach Fertigstellung: Branch in `claude/review-project-images-5cdbf` mergen/pushen
+3. Render deployt automatisch nach Push auf den Deploy-Branch
 
 ---
 
@@ -117,6 +127,9 @@ CREATE TABLE creators (
   telegram_chat_id  BIGINT,             -- KEIN globales UNIQUE — partieller Index unten
   -- Intern (DSGVO: darf Creator-Rolle NICHT zurückgegeben werden)
   notes             TEXT,
+  -- Aktivierungsflow
+  activation_status TEXT DEFAULT 'pending' CHECK (activation_status IN ('pending','id_uploaded','ai_checked','active','rejected')),
+  rejection_reason  TEXT,
   -- Status
   active            BOOLEAN DEFAULT true,
   deleted_at        TIMESTAMPTZ,
@@ -141,12 +154,21 @@ CREATE TABLE jobs (
   source_message_id BIGINT,
   status            TEXT DEFAULT 'open' CHECK (status IN ('open','in_progress','delivered','confirmed','carried')),
   carried_over_from UUID REFERENCES jobs(id),
+  partner_type      TEXT DEFAULT 'solo' CHECK (partner_type IN ('solo', 'partner')),
+  location_tags     TEXT[] DEFAULT '{}',
   created_at        TIMESTAMPTZ DEFAULT now(),
   in_progress_at    TIMESTAMPTZ,
   delivered_at      TIMESTAMPTZ,
   confirmed_at      TIMESTAMPTZ,
   deleted_at        TIMESTAMPTZ
 );
+```
+
+**DB-Migration (Neon ausführen):**
+```sql
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS partner_type TEXT DEFAULT 'solo'
+  CHECK (partner_type IN ('solo', 'partner'));
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS location_tags TEXT[] DEFAULT '{}';
 ```
 
 ### Tabelle: `job_status_history`
@@ -228,6 +250,8 @@ CREATE TABLE content_plans (
   carried_over_from  UUID REFERENCES content_plans(id),  -- gesetzt wenn Übertrag aus Vorwoche
   pushed_to_week     INT,   -- gesetzt auf Original wenn in nächste Woche geschoben
   pushed_to_year     INT,
+  account_id         UUID REFERENCES creator_accounts(id),  -- welcher Creator-Account
+  is_top_video       BOOLEAN DEFAULT false,  -- mit Stern als Top-Performance markiert
   deleted_at         TIMESTAMPTZ,
   created_at         TIMESTAMPTZ DEFAULT now()
 );
@@ -243,7 +267,96 @@ ALTER TABLE content_plans
 ALTER TABLE content_plans
   ADD COLUMN IF NOT EXISTS partner_type TEXT DEFAULT 'solo'
     CHECK (partner_type IN ('solo', 'partner'));
+
+ALTER TABLE content_plans
+  ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES creator_accounts(id),
+  ADD COLUMN IF NOT EXISTS is_top_video BOOLEAN DEFAULT false;
+
+-- Push-Dialog: week_number/year nullable (Top-Video aus Woche entfernen ohne zu löschen)
+ALTER TABLE content_plans ALTER COLUMN week_number DROP NOT NULL;
+ALTER TABLE content_plans ALTER COLUMN year DROP NOT NULL;
+
+-- Location Tags
+ALTER TABLE content_plans ADD COLUMN IF NOT EXISTS location_tags TEXT[] DEFAULT '{}';
 ```
+
+**Location Tags:** `['outdoor','indoor','auto','stadt']` — Multi-Select beim Anlegen/Bearbeiten, Multi-Select-Filter in Bottom Sheet (Desktop: linke Sidebar). Mehrfachauswahl wirkt als AND (alle gewählten Tags müssen vorhanden sein).
+
+### Tabelle: `creator_accounts`
+
+```sql
+CREATE TABLE IF NOT EXISTS creator_accounts (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id  UUID REFERENCES creators(id),
+  name        TEXT NOT NULL,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Neon-Migration (ausführen):**
+```sql
+CREATE TABLE IF NOT EXISTS creator_accounts (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id  UUID REFERENCES creators(id),
+  name        TEXT NOT NULL,
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE content_plans
+  ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES creator_accounts(id),
+  ADD COLUMN IF NOT EXISTS is_top_video BOOLEAN DEFAULT false;
+ALTER TABLE content_plans ALTER COLUMN week_number DROP NOT NULL;
+ALTER TABLE content_plans ALTER COLUMN year DROP NOT NULL;
+```
+
+### Tabelle: `creator_photos`
+
+```sql
+CREATE TABLE creator_photos (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id  UUID REFERENCES creators(id),
+  url         TEXT NOT NULL,           -- R2-URL
+  type        TEXT NOT NULL CHECK (type IN ('profile','role','id_document')),
+  label       TEXT,
+  sort_order  INT DEFAULT 0,
+  uploaded_by UUID REFERENCES users(id),
+  deleted_at  TIMESTAMPTZ,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Limits:** 1× `profile`, 5× `role`, 2× `id_document` pro Creator. Upload via R2 (Cloudflare), URL wird gespeichert.
+
+### Tabelle: `change_requests`
+
+```sql
+CREATE TABLE change_requests (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  creator_id   UUID REFERENCES creators(id),
+  agency_id    UUID REFERENCES agencies(id),
+  field        TEXT NOT NULL,
+  old_value    TEXT,
+  new_value    TEXT NOT NULL,
+  status       TEXT DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  reviewed_by  UUID REFERENCES users(id),
+  review_note  TEXT,
+  created_at   TIMESTAMPTZ DEFAULT now(),
+  reviewed_at  TIMESTAMPTZ
+);
+```
+
+### Tabelle: `system_settings`
+
+```sql
+CREATE TABLE system_settings (
+  key        TEXT PRIMARY KEY,
+  value      TEXT,
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+**Bekannte Keys:** `require_id_verification` (boolean-string `'true'`/`'false'`) — steuert ob ID-Upload beim Aktivierungsflow Pflicht ist.
 
 ### Tabelle: `logs`
 
@@ -299,53 +412,104 @@ CREATE TABLE logs (
 
 | Method | Path | Rolle | Beschreibung |
 |---|---|---|---|
-| GET | `/` | admin (alle), agency (eigene), creator (eigene) | Jobs nach KW/Plattform |
+| GET | `/` | admin (alle), agency (eigene), creator (eigene) | Jobs nach KW/Plattform; Query-Params: week, year, platform, partner_type, location_tags |
 | POST | `/` | admin, agency | Neuen Job anlegen |
-| PATCH | `/:id/status` | admin, agency, bot | Status ändern |
+| PATCH | `/:id/status` | admin, agency, bot | Status ändern (status + note) |
+| PATCH | `/:id` | creator | Job-Metadaten bearbeiten (partner_type, location_tags) — Creator kann eigene Jobs taggen |
 | DELETE | `/:id` | admin | Soft delete |
 | GET | `/summary` | admin, agency, creator | Wochenstatistik (creator: nur eigene) |
 | GET | `/stats` | admin, agency, creator | Zeitraum-Statistik: Monat/Quartal/Halbjahr/Jahr + Plattform-Verteilung + Monatsverlauf |
+| GET | `/combined` | creator | Kombinierte Liste: eigene Jobs + content_plans einer KW; gibt `[{_type:'job',...},{_type:'plan',...}]` zurück |
 
 ### Content Plans (`/api/v1/content-plans`)
 
 | Method | Path | Rolle | Beschreibung |
 |---|---|---|---|
-| GET | `/` | creator (eigene), agency (eigene), admin (alle) | Pläne nach KW, Query-Params: week, year, platform |
-| POST | `/` | creator, agency, admin | Neuen Plan anlegen |
-| PATCH | `/:id` | creator (eigene), agency, admin | Plan bearbeiten (COALESCE-Update) |
+| GET | `/` | creator (eigene), agency (eigene), admin (alle) | Pläne; Query-Params: week, year, platform, account_id, is_top_video |
+| POST | `/` | creator, agency, admin | Neuen Plan anlegen (inkl. account_id) |
+| PATCH | `/:id` | creator (eigene), agency, admin | Plan bearbeiten; account_id: CASE WHEN; is_top_video: COALESCE |
 | DELETE | `/:id` | creator (eigene), agency, admin | Soft delete |
 
-**Schieben-Logik:** `POST` erstellt Kopie mit `carried_over_from: original.id`; gleichzeitig `PATCH` auf Original setzt `pushed_to_week/year`. Beide Richtungen sichtbar: Original zeigt „→ KW{n}", Kopie zeigt Amber-Badge „↩ Übertrag".
+**Schieben-Logik:** `POST` erstellt Kopie mit `carried_over_from: original.id`; gleichzeitig `PATCH` auf Original setzt `pushed_to_week/year`. Kopie erbt `account_id` vom Original.
+
+### Creator Accounts (`/api/v1/creator-accounts`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | creator | Eigene Accounts (name, id, created_at) |
+| POST | `/` | creator | Neuen Account anlegen ({ name }) |
+| DELETE | `/:id` | creator | Eigenen Account soft-löschen |
+
+**Zweck:** Creator kann mehrere Social-Media-Accounts trennen (z.B. OF, IG). Wochenplan filtert per `account_id`, Ideen + Top-Videos sind cross-account sichtbar (mit optionalem Account-Filter).
+
+### Creator Photos (`/api/v1/creators/:id/photos`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | admin, agency (eigene) | Fotos eines Creators |
+| POST | `/` | admin, agency | Foto-Eintrag anlegen (nach R2-Upload) |
+| PATCH | `/:photoId` | admin, agency | Label / sort_order ändern |
+| DELETE | `/:photoId` | admin, agency | Foto soft-löschen |
+
+### Change Requests (`/api/v1/change-requests`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/` | admin (alle), agency (eigene), creator (eigene) | Änderungsanfragen |
+| POST | `/` | creator | Neue Anfrage stellen |
+| PATCH | `/:id` | admin, agency | Genehmigen oder ablehnen |
+
+### Upload (`/api/v1/upload`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| POST | `/` | admin, agency | Datei zu Cloudflare R2 hochladen; Query-Param `type` (photo/id_document); Limits: 5MB normal, 10MB id_document; JPEG/PNG/WebP/HEIC/PDF |
+
+### System (`/api/v1/system`)
+
+| Method | Path | Rolle | Beschreibung |
+|---|---|---|---|
+| GET | `/settings` | admin | Alle System-Einstellungen |
+| PATCH | `/settings/:key` | admin | Einstellung ändern (z.B. `require_id_verification`) |
 
 ### Logs (`/api/v1/logs`)
 
 | Method | Path | Rolle | Beschreibung |
 |---|---|---|---|
-| GET | `/` | admin | System-Logs |
+| GET | `/` | admin | System-Logs (Filter: level, source) |
+| GET | `/summary` | admin | 24h/1h Zusammenfassung + letzter Job/Lieferung |
 
 ---
 
 ## Dashboard — Tabs pro Rolle
 
 ### Admin-Dashboard
-- **Aufträge** — alle Agenturen, Filter: KW / Plattform / Agentur / Creator
-- **Creator** — Creator-Kartei, Anlegen-Formular, Bearbeiten
+- **Aufträge** — alle Agenturen, Filter: KW / Plattform / Agentur / Creator; Statistik-Karten mit farbigen Linien oben
+- **Creator** — Creator-Kartei mit Aktivierungsflow (Freigeben / Ablehnen); Foto-Upload (Profil 1×, Rolle 5×, Ausweis 2×) via R2; Pending-Activation-Liste; Creator anlegen + bearbeiten
 - **Agentur** — Agentur-Verwaltung, Anlegen, Details, zugeordnete Creator
-- **Kreativ** — freigegebene Content-Pläne, Filter wie Aufträge
-- **Statistik** — alle Agenturen, filterbar nach Agentur / Creator / KW
-- **Nutzer** — alle User-Accounts, Rollen, Status
-- **System** — Bot-Status, Logs, Heartbeat
+- **Statistik** — Platzhalter (→ TODO)
+- **Nutzer** — Platzhalter (→ TODO)
+- **System** — Logs (Filter: Level/Quelle), System-Einstellungen (z.B. ID-Verifikation an/aus), Status-Karten (Bot/Fehler/Job/Lieferung)
 
 ### Agentur-Dashboard
 - **Aufträge** — nur eigene Creator, Filter: KW / Plattform / Creator
-- **Creator** — eigene Creator-Kartei, Anlegen, Bearbeiten
-- **Kreativ** — freigegebene Pläne der eigenen Creator
-- **Statistik** — nur eigene Agentur
+- **Creator** — eigene Creator-Kartei; Aktivierungsflow (Freigeben / Ablehnen); Foto-Upload; Change-Request-Banner (Creator-Änderungsanfragen genehmigen/ablehnen)
+- **Kreativ** — freigegebene Pläne der eigenen Creator (`visible_to_agency=true`); Amber-Badge für Überträge
+- **Statistik** — Platzhalter (→ TODO)
 
 ### Creator-Dashboard
-- **Aufträge** — nur eigene Jobs, Filter: KW / Plattform
-- **Mein Content** — Content-Pläne anlegen/bearbeiten/löschen; Filter: KW / Plattform / Solo-Partner; Stat-Karten (Gesamt/Offen/Erledigt); nummerierte Liste; Checkbox zum Abhaken; Inline-Edit; Schieben → nächste KW mit Übertrag-Badge; Agentur-Sichtbarkeit-Toggle
-- **Statistik** — Wochenübersicht (Jobs der aktuellen KW) + Zeitraum-Karten (Monat/Quartal/Halbjahr/Jahr) + Plattform-Balken + Monatsverlauf; aktuell nur Aufträge (Jobs) — Eigener Content fehlt noch (→ TODO)
+- **Aufträge** — Sub-Tabs: `Aufträge` (nur Jobs) | `Kombiniert` (Jobs + content_plans der KW); Filter: Plattform / Solo-Partner / Location; Abhaken = Job auf `confirmed` / Plan auf `done`
+- **Mein Content** — Sub-Tabs: 📅 Wochenplan / 💡 Ideen / ⭐ Top-Videos; Account-Selector; Wochenplan filtert per Account; Stern = `is_top_video`; Filter: Plattform / Solo-Partner / Location; Stat-Karten; Listen- + Vollansicht; Inline-Edit; Schieben → nächste KW; Agentur-Sichtbarkeit-Toggle
+  - **Desktop (lg:)**: 3-Panel-Layout — linke Filter-Sidebar (Sub-Tabs, Account, Art, Status, Location, Account-Filter) | mittlere Plan-Liste | rechtes Detail-/Formular-Panel
+- **Statistik** — Toggle Aufträge/Eigener Content; Wochenübersicht KW; Zeitraum-Karten; Plattform-Balken; Monatsverlauf
+
+**Kombinierte Liste (Aufträge-Tab, Sub-Tab „Kombiniert"):**
+- Zeigt `jobs` (von Agentur vergeben) + `content_plans` (eigene, KW-gefiltert) nebeneinander
+- Unified List-Item: unterschieden durch `_type: 'job' | 'plan'` + farbige linke Randlinie (Job: orange, Plan: violet)
+- Jobs: Creator kann `partner_type` + `location_tags` inline setzen (Tap → Bottom Sheet / Desktop Inline)
+- Abhaken: Job → `PATCH /:id/status { status: 'confirmed' }` | Plan → `PATCH /:id { status: 'done' }`
+- Filter: Plattform / Solo-Partner / Location — gelten für beide Typen gleichzeitig
+- Stat-Karten: Gesamt / Offen (Jobs offen + Pläne nicht fertig) / Erledigt
 
 ---
 
@@ -526,31 +690,43 @@ Persistente Leiste am unteren Rand — dient zum schnellen Rollen-Wechsel währe
 
 ## Implementierungsreihenfolge
 
-### Phase 1 — Grundsystem (aktuell)
-- [x] DB-Schema Migration (auf Neon ausgeführt, inkl. alle nachträglichen ALTER TABLE)
-- [x] API: `POST /api/v1/agencies` (Transaktion)
-- [x] API: `POST /api/v1/creators` (Transaktion)
-- [x] API: `GET/PATCH /api/v1/agencies/:id`
-- [x] API: `GET/PATCH /api/v1/creators/:id`
-- [x] API: `GET/POST/PATCH/DELETE /api/v1/content-plans`
-- [x] API: `GET /api/v1/jobs/stats` (Zeitraum-Statistik)
-- [x] Dashboard: Admin-Login funktionsfähig
-- [x] Dashboard: Admin — Agentur-Tab (Liste + Anlegen + Detail)
-- [x] Dashboard: Admin — Creator-Tab (Liste + Anlegen-Formular)
-- [x] Dashboard: Admin — Nutzer-Tab (Liste)
-- [x] Dashboard: Creator-Login funktionsfähig
-- [x] Dashboard: Creator — Aufträge-Tab
-- [x] Dashboard: Creator — Mein Content-Tab (vollständig inkl. Schieben, Inline-Edit, Solo/Partner)
-- [x] Dashboard: Creator — Statistik-Tab (Wochenübersicht + Zeitraum-Karten + Balken)
-- [x] Dashboard: Agentur-Login + Agentur-Dashboard (Aufträge / Creator / Kreativ / Statistik)
+### Phase 1 — Grundsystem ✅ ABGESCHLOSSEN
 
-### Nächste Session (Priorität)
-- [ ] **Statistik: Eigener Content** — `GET /api/v1/content-plans/stats` Endpoint + `getContentPlanStats` in api.js + Toggle „Aufträge / Eigener Content" im Creator StatistikTab
-- [ ] **PWA** — `vite-plugin-pwa` + Web App Manifest (CF-Icons) + Service Worker (NetworkFirst für offline Jobs/Pläne) + mobile-first Layout-Optimierungen Creator-Dashboard
+**Backend / API (11 Route-Dateien):**
+- [x] Auth: Login / Refresh / Logout / Setup (erster Admin via SETUP_KEY)
+- [x] Agencies: CRUD + Transaktion (agency + user atomisch)
+- [x] Creators: CRUD + Transaktion + Aktivierungsflow (activate/reject/pending-activation)
+- [x] Jobs: CRUD + Status-History + Summary + Stats
+- [x] Content Plans: CRUD + Stats + account_id/is_top_video-Filter
+- [x] Creator Accounts: GET/POST/DELETE (multi-account für Creator)
+- [x] Creator Photos: CRUD, Typen: profile/role/id_document, via R2
+- [x] Change Requests: Creator stellt Anfrage, Agency/Admin genehmigt
+- [x] Upload: Cloudflare R2 (JPEG/PNG/WebP/HEIC/PDF, Größenlimits)
+- [x] System: Settings (require_id_verification togglebar)
+- [x] Logs: Lesen + Summary, DSGVO-Cleanup-Cron (90 Tage)
+
+**Dashboard:**
+- [x] Admin — alle 6 Tabs: Aufträge / Creator (inkl. Aktivierungsflow + Foto-Upload) / Agentur / Statistik* / Nutzer* / System
+- [x] Agentur — alle 4 Tabs: Aufträge / Creator (inkl. Aktivierungsflow + Foto-Upload + Change Requests) / Kreativ / Statistik*
+- [x] Creator — alle 3 Tabs: Aufträge / Mein Content (inkl. Accounts + Top-Videos + Stern) / Statistik
+
+**Infrastruktur:**
+- [x] PWA — vite-plugin-pwa, Web App Manifest, Service Worker (NetworkFirst API-Cache)
+- [x] DB — 12 Tabellen auf Neon Frankfurt, alle Migrations ausgeführt
+
+*Platzhalter — funktional aber ohne Inhalt
+
+### Nächste Prioritäten
+- [ ] **Kombinierte Liste** — `GET /api/v1/jobs/combined` + `PATCH /api/v1/jobs/:id` (Metadaten) + Creator-Aufträge-Tab mit Sub-Tab „Kombiniert"
+- [ ] **Job-Tagging** — `partner_type` + `location_tags` auf `jobs`-Tabelle; DB-Migration + API + UI
+- [ ] **Admin Statistik-Tab** — Agenturen-Übersicht, filterbar nach Agentur/Creator/KW
+- [ ] **Admin Nutzer-Tab** — User-Liste mit Rollen, Passwort-Reset via Admin
+- [ ] **Agentur Statistik-Tab** — Eigene Agentur-Zahlen
+- [ ] **Passwort-Reset** — `PATCH /api/v1/users/:id` (admin-only) für manuellen Reset
+- [ ] **Bottom Nav entfernen** — vor Production-Go-Live
 
 ### Phase 2
-- [ ] Agentur-Login + Agentur-Dashboard vollständig (Statistik-Tab ausbauen)
-- [ ] Bot-Integration für Creator (Telegram Chat ID verknüpfen)
+- [ ] Bot-Integration für Creator (Telegram Chat ID via /start verknüpfen)
 - [ ] Webhook statt Polling
 
 ### Phase 3 — SaaS
@@ -637,5 +813,5 @@ await sql.begin(async sql => {
 
 ---
 
-*Zuletzt aktualisiert: 2026-04-30 — Phase 1 Grundsystem abgeschlossen, Statistik + PWA als nächstes*  
+*Zuletzt aktualisiert: 2026-05-06 — Phase 1 vollständig; Multi-Account + Top-Videos; fehlende Tabellen + Endpoints dokumentiert*  
 *Alle Änderungen müssen hier dokumentiert werden.*

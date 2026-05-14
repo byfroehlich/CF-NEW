@@ -1,0 +1,167 @@
+import { Router } from 'express'
+import { S3Client, DeleteObjectCommand } from '@aws-sdk/client-s3'
+import sql from '../db/client.js'
+import { requireAnyRole, requireAgencyOrAdmin } from '../middleware/auth.js'
+
+const router = Router({ mergeParams: true })
+
+const R2 = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+})
+const BUCKET = process.env.R2_BUCKET || 'creatorflow-uploads'
+const PUBLIC_URL = process.env.R2_PUBLIC_URL
+
+const LIMITS = { profile: 1, role: 5, id_document: 2 }
+
+// GET /api/v1/creators/:id/photos
+router.get('/', requireAnyRole, async (req, res) => {
+  const { id } = req.params
+  const { role, agency_id, creator_id } = req.user
+  try {
+    // Creators can only see own photos (not id_document of others)
+    if (role === 'creator') {
+      if (creator_id !== id) return res.status(403).json({ error: 'Kein Zugriff' })
+      const photos = await sql`
+        SELECT id, type, url, label, sort_order, created_at
+        FROM creator_photos WHERE creator_id = ${id} AND deleted_at IS NULL
+        ORDER BY type, sort_order, created_at
+      `
+      return res.json(photos)
+    }
+    // Agency: only own creators, all photo types (including id_document for verification)
+    if (role === 'agency') {
+      const [creator] = await sql`SELECT id FROM creators WHERE id = ${id} AND agency_id = ${agency_id} AND deleted_at IS NULL`
+      if (!creator) return res.status(404).json({ error: 'Creator nicht gefunden' })
+      const photos = await sql`
+        SELECT id, type, url, label, sort_order, created_at
+        FROM creator_photos WHERE creator_id = ${id} AND deleted_at IS NULL
+        ORDER BY type, sort_order, created_at
+      `
+      return res.json(photos)
+    }
+    // Admin: all photos
+    const photos = await sql`
+      SELECT id, type, url, label, sort_order, created_at
+      FROM creator_photos WHERE creator_id = ${id} AND deleted_at IS NULL
+      ORDER BY type, sort_order, created_at
+    `
+    res.json(photos)
+  } catch {
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// POST /api/v1/creators/:id/photos — add photo record after upload
+router.post('/', requireAnyRole, async (req, res) => {
+  const { id } = req.params
+  const { role, agency_id, creator_id } = req.user
+  const { url, type = 'profile', label = null, sort_order = 0 } = req.body
+
+  if (!url) return res.status(400).json({ error: 'url fehlt' })
+  const validTypes = ['profile', 'role', 'id_document']
+  if (!validTypes.includes(type)) return res.status(400).json({ error: 'Ungültiger Typ' })
+
+  // Creators can only add own photos (not id_document via this route — use /me/photos)
+  if (role === 'creator' && creator_id !== id) return res.status(403).json({ error: 'Kein Zugriff' })
+  if (role === 'agency') {
+    const [c] = await sql`SELECT id FROM creators WHERE id = ${id} AND agency_id = ${agency_id} AND deleted_at IS NULL`
+    if (!c) return res.status(404).json({ error: 'Creator nicht gefunden' })
+  }
+
+  try {
+    // Profile photo: always replace (soft-delete existing first, no limit check needed)
+    if (type === 'profile') {
+      await sql`UPDATE creator_photos SET deleted_at = now() WHERE creator_id = ${id} AND type = 'profile' AND deleted_at IS NULL`
+    } else {
+      // Enforce limits for role and id_document types
+      const [{ count }] = await sql`
+        SELECT COUNT(*) FROM creator_photos
+        WHERE creator_id = ${id} AND type = ${type} AND deleted_at IS NULL
+      `
+      if (parseInt(count) >= LIMITS[type]) {
+        return res.status(409).json({ error: `Maximal ${LIMITS[type]} Foto(s) vom Typ "${type}" erlaubt` })
+      }
+    }
+
+    const [photo] = await sql`
+      INSERT INTO creator_photos (creator_id, url, type, label, sort_order, uploaded_by)
+      VALUES (${id}, ${url}, ${type}, ${label}, ${sort_order}, ${req.user.id})
+      RETURNING id, type, url, label, sort_order, created_at
+    `
+
+    // Also update photo_url on creators table if it's a profile photo
+    if (type === 'profile') {
+      await sql`UPDATE creators SET photo_url = ${url} WHERE id = ${id}`
+    }
+    // If it's an ID document, update activation_status
+    if (type === 'id_document') {
+      await sql`
+        UPDATE creators SET activation_status = 'id_uploaded'
+        WHERE id = ${id} AND activation_status = 'pending'
+      `
+    }
+
+    res.status(201).json(photo)
+  } catch {
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// PATCH /api/v1/creators/:id/photos/:photoId — update label/sort
+router.patch('/:photoId', requireAgencyOrAdmin, async (req, res) => {
+  const { id, photoId } = req.params
+  const { label, sort_order } = req.body
+  try {
+    const [photo] = await sql`
+      UPDATE creator_photos SET
+        label = COALESCE(${label ?? null}, label),
+        sort_order = COALESCE(${sort_order ?? null}, sort_order)
+      WHERE id = ${photoId} AND creator_id = ${id} AND deleted_at IS NULL
+      RETURNING id, type, url, label, sort_order
+    `
+    if (!photo) return res.status(404).json({ error: 'Foto nicht gefunden' })
+    res.json(photo)
+  } catch {
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+// DELETE /api/v1/creators/:id/photos/:photoId
+router.delete('/:photoId', requireAnyRole, async (req, res) => {
+  const { id, photoId } = req.params
+  const { role, agency_id, creator_id } = req.user
+  try {
+    let query
+    if (role === 'creator') {
+      if (creator_id !== id) return res.status(403).json({ error: 'Kein Zugriff' })
+      query = sql`UPDATE creator_photos SET deleted_at = now() WHERE id = ${photoId} AND creator_id = ${id} AND type != 'id_document' AND deleted_at IS NULL RETURNING id, url`
+    } else if (role === 'agency') {
+      const [c] = await sql`SELECT id FROM creators WHERE id = ${id} AND agency_id = ${agency_id} AND deleted_at IS NULL`
+      if (!c) return res.status(404).json({ error: 'Creator nicht gefunden' })
+      query = sql`UPDATE creator_photos SET deleted_at = now() WHERE id = ${photoId} AND creator_id = ${id} AND deleted_at IS NULL RETURNING id, url`
+    } else {
+      query = sql`UPDATE creator_photos SET deleted_at = now() WHERE id = ${photoId} AND creator_id = ${id} AND deleted_at IS NULL RETURNING id, url`
+    }
+    const [photo] = await query
+    if (!photo) return res.status(404).json({ error: 'Foto nicht gefunden' })
+
+    // Delete file from R2
+    try {
+      if (PUBLIC_URL && photo.url?.startsWith(PUBLIC_URL)) {
+        const key = photo.url.slice(PUBLIC_URL.length + 1)
+        await R2.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }))
+      }
+    } catch { /* ignore R2 errors — DB record already soft-deleted */ }
+
+    res.json({ ok: true })
+  } catch {
+    res.status(500).json({ error: 'Serverfehler' })
+  }
+})
+
+export default router

@@ -4,7 +4,7 @@ const PLATFORMS = ['IG', 'TK', 'OF', 'FL', 'ML']
 
 export default function PlatformFilter({ value, onChange, dark = false }) {
   return (
-    <div className="flex gap-2 flex-wrap items-center">
+    <div className="flex gap-2 flex-nowrap items-center">
       {/* "Alle" text pill */}
       <button
         onClick={() => onChange('Alle')}
