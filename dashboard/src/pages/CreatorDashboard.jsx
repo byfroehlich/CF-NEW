@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { logout, getJobs, getJobSummary, getJobStats, getContentPlanStats, getContentPlans, createContentPlan, updateContentPlan, deleteContentPlan, getMyProfile, getChangeRequests, createChangeRequest, uploadFile, getCreatorPhotos, addCreatorPhoto, deleteCreatorPhoto, getCreatorAccounts, createCreatorAccount, updateCreatorAccount, deleteCreatorAccount, updateJobStatus, updateJobMeta, getCombinedList } from '../lib/api.js'
 import { clearAuth } from '../lib/auth.js'
+import MalaraLogo from '../components/MalaraLogo.jsx'
 import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
 import PlatformIcon from '../components/PlatformIcon.jsx'
@@ -90,14 +91,9 @@ function CreatorHeader({ tab, week, year, onWeekChange, onLogout }) {
   return (
     <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
       <div className="flex items-center justify-between max-w-2xl mx-auto">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-xs">CF</span>
-          </div>
-          <div>
-            <div className="font-bold text-base leading-none">CreatorFlow</div>
-            <div className="text-xs text-white/70 mt-0.5">KW {week}</div>
-          </div>
+        <div className="flex items-center gap-2.5">
+          <MalaraLogo height={26} variant="white" />
+          <span className="text-xs text-white/60 font-medium">KW {week}</span>
         </div>
         <div className="flex items-center gap-3">
           <WeekNav week={week} year={year} onChange={onWeekChange} />
@@ -3105,14 +3101,9 @@ export default function CreatorDashboard() {
       {/* Header — gradient, sticky, full width */}
       <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 lg:flex-shrink-0 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
         <div className="flex items-center justify-between lg:max-w-none lg:px-2">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-xs">CF</span>
-            </div>
-            <div>
-              <div className="font-bold text-base leading-none">CreatorFlow</div>
-              <div className="text-xs text-white/70 mt-0.5 lg:hidden">KW {week}</div>
-            </div>
+          <div className="flex items-center gap-2.5">
+            <MalaraLogo height={26} variant="white" />
+            <span className="text-xs text-white/60 font-medium lg:hidden">KW {week}</span>
           </div>
           <div className="flex items-center gap-3">
             <div className="lg:hidden">
