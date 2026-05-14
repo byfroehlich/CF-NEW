@@ -91,6 +91,12 @@ export const jobSchema = z.object({
   platform: z.enum(['IG','TK','OF','FL','ML','OTHER']),
   content_type: z.enum(['clip','reel','script','other']).default('clip'),
   source_link: z.string().optional().nullable(),
+  title: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
+  kleidung: z.string().optional().nullable(),
+  requisiten: z.string().optional().nullable(),
+  script: z.string().optional().nullable(),
+  caption: z.string().optional().nullable(),
 })
 
 export const jobStatusSchema = z.object({
