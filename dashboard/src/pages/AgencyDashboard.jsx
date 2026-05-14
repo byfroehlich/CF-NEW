@@ -7,6 +7,7 @@ import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
 import PlatformIcon from '../components/PlatformIcon.jsx'
 import WeekNav from '../components/WeekNav.jsx'
+import MalaraLogo from '../components/MalaraLogo.jsx'
 
 function getCurrentWeek() {
   const now = new Date()
@@ -19,17 +20,15 @@ function getCurrentWeek() {
 
 const TABS = ['Aufträge', 'Creator', 'Kreativ', 'Statistik']
 
-function AgencyHeader({ tab, week, year, onWeekChange, onLogout }) {
+function AgencyHeader({ tab, week, year, onWeekChange, onLogout, agencyName }) {
   return (
-    <div className="bg-gray-900 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
+    <div className="bg-gradient-to-r from-violet-950 to-fuchsia-950 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
       <div className="flex items-center justify-between max-w-6xl mx-auto">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-pink-500 flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-xs">CF</span>
-          </div>
-          <div>
-            <div className="font-bold text-base leading-none">CreatorFlow</div>
-            <div className="text-xs text-gray-400 mt-0.5">AGENTUR</div>
+          <MalaraLogo height={28} variant="white" />
+          <div className="pl-2 border-l border-white/20">
+            <div className="text-xs text-white/50 uppercase tracking-widest font-semibold">Agentur</div>
+            {agencyName && <div className="text-xs text-white/70 mt-0.5">{agencyName}</div>}
           </div>
         </div>
         <div className="flex items-center gap-4">
@@ -38,7 +37,7 @@ function AgencyHeader({ tab, week, year, onWeekChange, onLogout }) {
               <WeekNav week={week} year={year} onChange={onWeekChange} />
             </div>
           )}
-          <button onClick={onLogout} className="text-xs text-gray-400 hover:text-white uppercase tracking-wide">Abmelden</button>
+          <button onClick={onLogout} className="text-xs text-white/50 hover:text-white uppercase tracking-wide">Abmelden</button>
         </div>
       </div>
     </div>
@@ -449,7 +448,7 @@ export default function AgencyDashboard() {
           {TABS.map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                activeTab === tab ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+                activeTab === tab ? 'border-violet-600 text-violet-700' : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}>
               {tab}
             </button>

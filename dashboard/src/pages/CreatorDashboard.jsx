@@ -7,6 +7,7 @@ import StatCard from '../components/StatCard.jsx'
 import PlatformFilter from '../components/PlatformFilter.jsx'
 import PlatformIcon from '../components/PlatformIcon.jsx'
 import WeekNav from '../components/WeekNav.jsx'
+import MalaraLogo from '../components/MalaraLogo.jsx'
 
 function getCurrentWeek() {
   const now = new Date()
@@ -1425,14 +1426,9 @@ export default function CreatorDashboard() {
       {/* Header mit eingebetteten Tab-Buttons */}
       <div className="bg-gradient-to-r from-violet-600 to-pink-500 text-white px-6 pb-4 sticky top-0 z-10" style={{ paddingTop: 'max(env(safe-area-inset-top), 1rem)' }}>
         <div className="flex items-center justify-between max-w-2xl mx-auto">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
-              <span className="text-white font-bold text-xs">CF</span>
-            </div>
-            <div>
-              <div className="font-bold text-base leading-none">CreatorFlow</div>
-              <div className="text-xs text-white/70 mt-0.5">KW {week}</div>
-            </div>
+          <div className="flex flex-col">
+            <MalaraLogo height={28} variant="white" />
+            <div className="text-xs text-white/70 mt-0.5 pl-0.5">KW {week}</div>
           </div>
           <div className="flex items-center gap-3">
             <WeekNav week={week} year={year} onChange={(w,y) => { setWeek(w); setYear(y) }} />
